@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Health Score — FinTrack{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  .score-hero {
+    display: flex; align-items: center; gap: 2.5rem;
+    padding: 0.5rem 0 1.5rem;
+  }
+  .score-ring-wrap { position: relative; flex-shrink: 0; }
+  .score-ring-label {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .score-big { font-size: 3.2rem; font-weight: 800; letter-spacing: -0.05em; font-family: 'DM Mono', monospace; }
+  .score-of  { font-size: 0.7rem; color: var(--muted); font-family: 'DM Mono', monospace; margin-top: -0.2rem; }
+  .score-band-label { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 0.3rem; }
+
+  .breakdown-item { margin-bottom: 1rem; }
+  .breakdown-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; }
+  .breakdown-name { font-size: 0.88rem; font-weight: 600; }
+  .breakdown-pts { font-family: 'DM Mono', monospace; font-size: 0.82rem; color: var(--muted); }
+  .breakdown-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .breakdown-fill { height: 100%; border-radius: 4px; transition: width 1.2s cubic-bezier(0.4,0,0.2,1); width: 0%; }
+
+  .tip-item { display: flex; gap: 0.85rem; padding: 0.85rem 0; border-bottom: 1px solid var(--border); }
+  .tip-item:last-child { border-bottom: none; }
+  .tip-icon { font-size: 1rem; flex-shrink: 0; margin-top: 0.1rem; }
+  .tip-text { font-size: 0.88rem; color: var(--muted); line-height: 1.6; }
+
+  .band-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); }
+  .band-row:last-child { border-bottom: none; }
+  .band-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .band-name { font-size: 0.88rem; font-weight: 700; flex: 1; }
+  .band-range { font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--muted); }
+
+  .stat-row { display: flex; justify-content: space-between; padding: 0.6rem 0; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--muted); }
+  .stat-val { font-family: 'DM Mono', monospace; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+  <div class="page-title">Financial Health Score</div>
+  <div class="page-sub">Powered by the FinTrack scoring engine — 5 dimensions, 100 points</div>
+</div>
+
+{% if not has_data %}
+<div class="card fade-up" style="text-align:center;padding:4rem 2rem;">
+  <div style="font-size:3rem;margin-bottom:1rem;">📊</div>
+  <div style="font-size:1.1rem;font-weight:700;margin-bottom:0.5rem;">No data yet</div>
+  <div style="color:var(--muted);margin-bottom:1.5rem;font-size:0.9rem;">Add at least one transaction to generate your score.</div>
+  <a href="/transactions" class="btn btn-primary">Add first transaction →</a>
+</div>
+{% else %}
+
+{% set band_color = {'excellent':'#1fd87a','good':'#f0a500','fair':'#e07a00','needs_work':'#f04f4f'} %}
+{% set bc = band_color.get(band, '#f04f4f') %}
+{% set maxes = {'income_stability':25,'savings_health':25,'budget_discipline':20,'emergency_fund':15,'spending_diversity':15} %}
+{% set labels = {'income_stability':'Income Stability','savings_health':'Savings Health','budget_discipline':'Budget Discipline','emergency_fund':'Emergency Fund','spending_diversity':'Spending Diversity'} %}
+{% set icons = {'income_stability':'📈','savings_health':'💰','budget_discipline':'🎯','emergency_fund':'🛡️','spending_diversity':'🌱'} %}
+
+<!-- Score hero -->
+<div class="grid-2 fade-up fade-up-1">
+  <div class="card">
+    <div class="score-hero">
+      <div class="score-ring-wrap">
+        <canvas id="scoreRing" width="160" height="160"></canvas>
+        <div class="score-ring-label">
+          <div class="score-big" style="color:{{ bc }}">{{ score|round|int }}</div>
+          <div class="score-of">/100</div>
+          <div class="score-band-label" style="color:{{ bc }}">{{ band.replace('_',' ') }}</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:1.15rem;font-weight:800;color:{{ bc }};margin-bottom:0.75rem;text-transform:capitalize;">
+          {{ band.replace('_',' ') }}
+        </div>
+        <div class="stat-row"><span class="stat-label">Savings rate</span><span class="stat-val" style="color:{% if savings_rate >= 10 %}var(--green){% else %}var(--red){% endif %}">{{ savings_rate }}%</span></div>
+        <div class="stat-row"><span class="stat-label">Emergency cover</span><span class="stat-val">{{ emergency_months }} months</span></div>
+        <div class="stat-row"><span class="stat-label">Score</span><span class="stat-val" style="color:{{ bc }}">{{ score }}/100</span></div>
+      </div>
+    </div>
+
+    <!-- Radar chart -->
+    <canvas id="radarChart" height="200"></canvas>
+  </div>
+
+  <!-- Breakdown bars -->
+  <div class="card">
+    <div class="card-title">Score Breakdown</div>
+    {% for key, label in labels.items() %}
+    {% set val = breakdown[key] %}
+    {% set maxv = maxes[key] %}
+    {% set pct = (val / maxv * 100)|round|int %}
+    <div class="breakdown-item">
+      <div class="breakdown-header">
+        <div class="breakdown-name">{{ icons[key] }} {{ label }}</div>
+        <div class="breakdown-pts">{{ val|round(1) }}<span style="color:var(--muted2)">/{{ maxv }}</span></div>
+      </div>
+      <div class="breakdown-bar">
+        <div class="breakdown-fill"
+          data-pct="{{ pct }}"
+          style="background:{% if pct >= 80 %}var(--green){% elif pct >= 50 %}var(--accent){% else %}var(--red){% endif %}">
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Tips + legend -->
+<div class="grid-2 fade-up fade-up-2">
+  <div class="card">
+    <div class="card-title">💡 Improvement Tips</div>
+    {% for tip in tips %}
+    <div class="tip-item">
+      <div class="tip-icon">→</div>
+      <div class="tip-text">{{ tip }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <div class="card-title">Score Bands</div>
+    {% for name, color, rng, desc in [
+      ('Excellent','#1fd87a','75–100','Strong savings, good budget control'),
+      ('Good',     '#f0a500','55–74','Solid habits, some areas to improve'),
+      ('Fair',     '#e07a00','35–54','Getting started, needs consistency'),
+      ('Needs Work','#f04f4f','0–34', 'Add more data and set budgets')
+    ] %}
+    <div class="band-row">
+      <div class="band-dot" style="background:{{ color }}"></div>
+      <div>
+        <div class="band-name" style="color:{{ color }}">{{ name }}</div>
+        <div style="font-size:0.75rem;color:var(--muted);">{{ desc }}</div>
+      </div>
+      <div class="band-range">{{ rng }}</div>
+    </div>
+    {% endfor %}
+
+    <div class="divider"></div>
+    <a href="/transactions" class="btn btn-primary" style="width:100%;justify-content:center;">
+      Add transactions to improve →
+    </a>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if has_data %}
+<script>
+const bc = '{{ bc }}';
+const score = {{ score|round|int }};
+const breakdown = {{ breakdown | tojson }};
+
+// Score ring
+new Chart(document.getElementById('scoreRing'), {
+  type: 'doughnut',
+  data: {
+    datasets: [{
+      data: [score, 100 - score],
+      backgroundColor: [bc, '#1c2030'],
+      borderWidth: 0, borderRadius: 5,
+    }]
+  },
+  options: {
+    responsive: false, cutout: '78%',
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    animation: { duration: 1400, easing: 'easeInOutQuart' },
+  }
+});
+
+// Radar chart
+new Chart(document.getElementById('radarChart'), {
+  type: 'radar',
+  data: {
+    labels: ['Income\nStability', 'Savings\nHealth', 'Budget\nDiscipline', 'Emergency\nFund', 'Spending\nDiversity'],
+    datasets: [{
+      data: [
+        (breakdown.income_stability / 25) * 100,
+        (breakdown.savings_health / 25) * 100,
+        (breakdown.budget_discipline / 20) * 100,
+        (breakdown.emergency_fund / 15) * 100,
+        (breakdown.spending_diversity / 15) * 100,
+      ],
+      backgroundColor: 'rgba(240,165,0,0.12)',
+      borderColor: '#f0a500',
+      borderWidth: 2,
+      pointBackgroundColor: '#f0a500',
+      pointRadius: 4,
+    }]
+  },
+  options: {
+    responsive: true,
+    scales: {
+      r: {
+        min: 0, max: 100,
+        grid: { color: '#1c2030' },
+        angleLines: { color: '#1c2030' },
+        ticks: { display: false },
+        pointLabels: { color: '#5a6278', font: { family: 'DM Mono', size: 10 } },
+      }
+    },
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    animation: { duration: 1200 },
+  }
+});
+
+// Animate bars
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.breakdown-fill[data-pct]').forEach(el => {
+    setTimeout(() => el.style.width = el.dataset.pct + '%', 200);
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

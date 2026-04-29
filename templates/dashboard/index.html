@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — FinTrack{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  .kpi-trend { font-size: 0.75rem; margin-top: 0.4rem; font-family: 'DM Mono', monospace; }
+  .kpi-trend.up   { color: var(--green); }
+  .kpi-trend.down { color: var(--red); }
+  .chart-wrap { position: relative; height: 220px; }
+  .score-mini { display: flex; align-items: center; gap: 1rem; }
+  .score-num  { font-size: 3rem; font-weight: 800; letter-spacing: -0.05em; font-family: 'DM Mono', monospace; }
+  .recent-row td:first-child { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.78rem; }
+  .amount-cell { font-family: 'DM Mono', monospace; font-weight: 600; text-align: right; white-space: nowrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+  <div class="page-title">Dashboard</div>
+  <div class="page-sub">{{ current_month }} &nbsp;·&nbsp; {{ txn_count }} transactions total</div>
+</div>
+
+<!-- KPI Row -->
+<div class="grid-4 fade-up fade-up-1">
+  <div class="card">
+    <div class="card-label">Income this month</div>
+    <div class="card-value green">P&nbsp;{{ "%.0f"|format(income_month) }}</div>
+    <div class="card-sub mono">P {{ "%.2f"|format(income_month) }}</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Expenses this month</div>
+    <div class="card-value red">P&nbsp;{{ "%.0f"|format(expense_month) }}</div>
+    <div class="card-sub mono">P {{ "%.2f"|format(expense_month) }}</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Net this month</div>
+    <div class="card-value {% if balance_month >= 0 %}green{% else %}red{% endif %}">
+      P&nbsp;{{ "%.0f"|format(balance_month) }}
+    </div>
+    <div class="card-sub mono">{% if balance_month >= 0 %}surplus{% else %}deficit{% endif %}</div>
+  </div>
+  <div class="card">
+    <div class="card-label">All-time balance</div>
+    <div class="card-value {% if net_balance >= 0 %}gold{% else %}red{% endif %}">
+      P&nbsp;{{ "%.0f"|format(net_balance) }}
+    </div>
+    <div class="card-sub mono">P {{ "%.2f"|format(net_balance) }}</div>
+  </div>
+</div>
+
+<!-- Charts Row -->
+<div class="grid-2 fade-up fade-up-2">
+  <!-- Monthly trend -->
+  <div class="card">
+    <div class="card-title">
+      Income vs Expenses
+      <span class="chip">monthly</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Donut -->
+  <div class="card">
+    <div class="card-title">
+      Spending by Category
+      <span class="chip">all time</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="donutChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Score + Recent -->
+<div class="grid-2 fade-up fade-up-3">
+  <!-- FHS card -->
+  <div class="card">
+    <div class="card-title">Financial Health Score <a href="/scoring" style="font-size:0.78rem;font-weight:600;color:var(--accent);">details →</a></div>
+    <div class="score-mini">
+      <div style="position:relative;width:110px;height:110px;flex-shrink:0;">
+        <canvas id="scoreGauge" width="110" height="110"></canvas>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+          <div class="score-num" style="font-size:1.9rem;color:
+            {% if fhs_band == 'excellent' %}var(--green)
+            {% elif fhs_band == 'good' %}var(--accent)
+            {% elif fhs_band == 'fair' %}#e07a00
+            {% else %}var(--red){% endif %}">{{ fhs_score }}</div>
+          <div style="font-size:0.62rem;color:var(--muted);font-family:'DM Mono',monospace;">/100</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:1rem;font-weight:800;text-transform:capitalize;color:
+          {% if fhs_band == 'excellent' %}var(--green)
+          {% elif fhs_band == 'good' %}var(--accent)
+          {% elif fhs_band == 'fair' %}#e07a00
+          {% else %}var(--red){% endif %}">
+          {{ fhs_band.replace('_',' ') }}
+        </div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.25rem;line-height:1.5;">
+          {% if fhs_band == 'excellent' %}Outstanding financial health!
+          {% elif fhs_band == 'good' %}Good habits, keep going.
+          {% elif fhs_band == 'fair' %}Room to improve — check tips.
+          {% else %}Add more data to improve your score.{% endif %}
+        </div>
+        <a href="/scoring" class="btn btn-ghost btn-sm" style="margin-top:0.85rem;">View breakdown</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent transactions -->
+  <div class="card">
+    <div class="card-title">Recent Transactions <a href="/transactions" style="font-size:0.78rem;font-weight:600;color:var(--accent);">all →</a></div>
+    {% if recent %}
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          {% for t in recent %}
+          <tr>
+            <td>{{ t.date }}</td>
+            <td>
+              <span class="badge badge-{{ t.type }}">{{ t.type }}</span>
+            </td>
+            <td style="color:var(--text);">{{ t.category }}</td>
+            <td class="amount-cell" style="color:{% if t.type == 'income' %}var(--green){% else %}var(--red){% endif %}">
+              {% if t.type == 'income' %}+{% else %}−{% endif %}P {{ "%.2f"|format(t.amount) }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">💸</div>
+      <p>No transactions this month yet.</p>
+      <a href="/transactions" class="btn btn-primary btn-sm">Add first →</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ACCENT = '#f0a500', GREEN = '#1fd87a', RED = '#f04f4f', MUTED = '#3a4055';
+const CHART_DEFAULTS = {
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { display: false }, tooltip: { backgroundColor: '#161a24', titleColor: '#e2e6f0', bodyColor: '#5a6278', borderColor: '#252c3f', borderWidth: 1 } },
+};
+
+// Score gauge
+(function() {
+  const score = {{ fhs_score }};
+  const band  = '{{ fhs_band }}';
+  const color = band === 'excellent' ? GREEN : band === 'good' ? ACCENT : band === 'fair' ? '#e07a00' : RED;
+  const ctx = document.getElementById('scoreGauge').getContext('2d');
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [score, 100 - score],
+        backgroundColor: [color, '#1c2030'],
+        borderWidth: 0, borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: false, cutout: '80%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      animation: { duration: 1200, easing: 'easeInOutQuart' },
+    }
+  });
+})();
+
+// Fetch chart data and render
+fetch('/transactions/api/summary', { credentials: 'include' })
+  .then(r => r.json())
+  .then(data => {
+    // ── Monthly trend line chart ──
+    const months  = Object.keys(data.by_month);
+    const incomes = months.map(m => data.by_month[m].income || 0);
+    const exps    = months.map(m => data.by_month[m].expense || 0);
+
+    if (months.length > 0) {
+      new Chart(document.getElementById('trendChart'), {
+        type: 'line',
+        data: {
+          labels: months,
+          datasets: [
+            {
+              label: 'Income', data: incomes,
+              borderColor: GREEN, backgroundColor: 'rgba(31,216,122,0.08)',
+              borderWidth: 2, pointRadius: 4, pointBackgroundColor: GREEN,
+              fill: true, tension: 0.4,
+            },
+            {
+              label: 'Expenses', data: exps,
+              borderColor: RED, backgroundColor: 'rgba(240,79,79,0.06)',
+              borderWidth: 2, pointRadius: 4, pointBackgroundColor: RED,
+              fill: true, tension: 0.4,
+            },
+          ]
+        },
+        options: {
+          ...CHART_DEFAULTS,
+          plugins: {
+            ...CHART_DEFAULTS.plugins,
+            legend: { display: true, labels: { color: '#5a6278', font: { family: 'DM Mono', size: 11 }, boxWidth: 12, padding: 16 } }
+          },
+          scales: {
+            x: { grid: { color: '#1c2030' }, ticks: { color: '#5a6278', font: { family: 'DM Mono', size: 10 } } },
+            y: { grid: { color: '#1c2030' }, ticks: { color: '#5a6278', font: { family: 'DM Mono', size: 10 }, callback: v => 'P' + v.toLocaleString() } },
+          },
+          animation: { duration: 1000, easing: 'easeInOutQuart' },
+        }
+      });
+    } else {
+      document.getElementById('trendChart').parentElement.innerHTML = '<div class="empty-state"><div class="icon">📈</div><p>Add transactions to see trend</p></div>';
+    }
+
+    // ── Donut chart ──
+    const cats  = Object.keys(data.by_category);
+    const vals  = Object.values(data.by_category);
+    const COLORS = ['#f0a500','#1fd87a','#4f8ef0','#f04f4f','#a855f7','#f97316','#06b6d4','#ec4899','#84cc16','#fbbf24','#e879f9','#34d399'];
+
+    if (cats.length > 0) {
+      new Chart(document.getElementById('donutChart'), {
+        type: 'doughnut',
+        data: {
+          labels: cats,
+          datasets: [{
+            data: vals,
+            backgroundColor: COLORS.slice(0, cats.length),
+            borderWidth: 2, borderColor: '#0f1117',
+          }]
+        },
+        options: {
+          ...CHART_DEFAULTS,
+          cutout: '65%',
+          plugins: {
+            legend: {
+              display: true, position: 'right',
+              labels: { color: '#5a6278', font: { family: 'DM Mono', size: 10 }, boxWidth: 10, padding: 10, generateLabels: (chart) => {
+                const ds = chart.data.datasets[0];
+                const total = ds.data.reduce((a,b) => a+b, 0);
+                return chart.data.labels.map((label, i) => ({
+                  text: `${label} ${((ds.data[i]/total)*100).toFixed(0)}%`,
+                  fillStyle: ds.backgroundColor[i], index: i,
+                }));
+              }}
+            },
+            tooltip: { ...CHART_DEFAULTS.plugins.tooltip, callbacks: { label: ctx => ` P${ctx.raw.toFixed(2)}` } }
+          },
+          animation: { duration: 1000, animateRotate: true },
+        }
+      });
+    } else {
+      document.getElementById('donutChart').parentElement.innerHTML = '<div class="empty-state"><div class="icon">🍩</div><p>Add expenses to see breakdown</p></div>';
+    }
+  });
+</script>
+{% endblock %}

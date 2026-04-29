@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Budgets — FinTrack{% endblock %}
+
+{% block head %}
+<style>
+  .budget-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 1.1rem 1.25rem;
+    margin-bottom: 0.75rem; transition: border-color 0.15s;
+  }
+  .budget-card:hover { border-color: var(--border2); }
+  .budget-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
+  .budget-cat { font-weight: 700; font-size: 0.9rem; }
+  .budget-nums { font-family: 'DM Mono', monospace; font-size: 0.82rem; color: var(--muted); }
+  .budget-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 0.4rem; }
+  .budget-fill { height: 100%; border-radius: 4px; transition: width 1.2s cubic-bezier(0.4,0,0.2,1); width: 0%; }
+  .budget-foot { display: flex; justify-content: space-between; font-size: 0.78rem; font-family: 'DM Mono', monospace; }
+  .empty-budgets { text-align:center; padding:2rem; color:var(--muted); font-size:0.88rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+  <div class="page-title">Budgets</div>
+  <div class="page-sub">{{ current_month }} — monthly spending limits</div>
+</div>
+
+<div class="grid-2 fade-up fade-up-1">
+  <!-- Set budget form -->
+  <div class="card">
+    <div class="card-title">Set a Budget</div>
+    <form method="POST" action="/transactions/budgets/set">
+      <div class="form-group">
+        <label>Category</label>
+        <select name="category" required>
+          {% for c in categories %}<option>{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Monthly Limit (BWP)</label>
+        <input type="number" name="limit_amt" step="0.01" min="1" placeholder="e.g. 2000" required>
+      </div>
+      <input type="hidden" name="month" value="{{ current_month }}">
+      <button type="submit" class="btn btn-primary">Save budget →</button>
+    </form>
+  </div>
+
+  <!-- Why budgets -->
+  <div class="card" style="background:linear-gradient(135deg,var(--surface),var(--surface2));">
+    <div class="card-title">💡 Why set budgets?</div>
+    <p style="color:var(--muted);font-size:0.88rem;line-height:1.7;margin-bottom:1rem;">
+      Setting limits per category directly boosts your <strong style="color:var(--text)">Budget Discipline</strong>
+      score — worth up to <strong style="color:var(--accent)">20 points</strong> on your Financial Health Score.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:0.5rem;">
+      <div style="display:flex;justify-content:space-between;font-size:0.8rem;">
+        <span style="color:var(--muted)">90%+ categories under limit</span>
+        <span style="color:var(--green);font-weight:700;">20 pts</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:0.8rem;">
+        <span style="color:var(--muted)">70–89% under limit</span>
+        <span style="color:var(--accent);font-weight:700;">14 pts</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:0.8rem;">
+        <span style="color:var(--muted)">50–69% under limit</span>
+        <span style="color:#e07a00;font-weight:700;">8 pts</span>
+      </div>
+    </div>
+    <a href="/scoring" class="btn btn-ghost btn-sm" style="margin-top:1rem;">View my score →</a>
+  </div>
+</div>
+
+<!-- Budget list -->
+<div class="card fade-up fade-up-2">
+  <div class="card-title">This Month's Budgets <span class="chip">{{ budgets|length }} set</span></div>
+  {% if budgets %}
+    {% for b in budgets %}
+    {% set remaining = b.limit_amt - b.spent %}
+    {% set over = b.pct >= 100 %}
+    <div class="budget-card">
+      <div class="budget-header">
+        <div class="budget-cat">{{ b.category }}</div>
+        <div class="budget-nums">
+          P {{ "%.2f"|format(b.spent) }} of P {{ "%.2f"|format(b.limit_amt) }}
+        </div>
+      </div>
+      <div class="budget-bar">
+        <div class="budget-fill"
+          data-pct="{{ b.pct }}"
+          style="background: {% if b.pct >= 100 %}var(--red){% elif b.pct >= 80 %}#e07a00{% else %}var(--green){% endif %}">
+        </div>
+      </div>
+      <div class="budget-foot">
+        <span style="color:{% if b.pct >= 100 %}var(--red){% elif b.pct >= 80 %}#e07a00{% else %}var(--muted){% endif %}">
+          {% if over %}OVER BUDGET{% else %}{{ b.pct }}% used{% endif %}
+        </span>
+        <span style="color:{% if remaining < 0 %}var(--red){% else %}var(--green){% endif %};">
+          {% if remaining >= 0 %}P {{ "%.2f"|format(remaining) }} left{% else %}P {{ "%.2f"|format(remaining|abs) }} over{% endif %}
+        </span>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+  <div class="empty-budgets">
+    <div class="icon" style="font-size:2rem;margin-bottom:0.5rem;">📊</div>
+    No budgets set for {{ current_month }}. Add one above to start tracking!
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Animate budget bars on load
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.budget-fill[data-pct]').forEach(el => {
+    const pct = Math.min(parseFloat(el.dataset.pct), 100);
+    setTimeout(() => el.style.width = pct + '%', 150);
+  });
+});
+</script>
+{% endblock %}
