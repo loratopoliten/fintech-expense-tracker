@@ -1,9 +1,12 @@
-"""Transaction routes — CRUD + budgets. SQL uses ? placeholders (SQLite) or %s (Postgres)."""
+"""Transaction routes — CRUD + budgets + CSV export + date range filter."""
 
-from fastapi import APIRouter, Request, Form, Depends, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
+import csv
+import io
+from fastapi import APIRouter, Request, Form, Depends, HTTPException, Query
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from datetime import date
+from typing import Optional
 from app.database import db_cursor, USE_POSTGRES
 from app.utils.auth import get_current_user
 
@@ -17,20 +20,46 @@ EXPENSE_CATEGORIES = [
 ]
 INCOME_CATEGORIES = ["Salary", "Freelance", "Business", "Investment Returns", "Gift", "Other"]
 
-P = "%s" if USE_POSTGRES else "?"   # placeholder character
+P = "%s" if USE_POSTGRES else "?"
 
 
 @router.get("", response_class=HTMLResponse)
-async def transactions_page(request: Request, user=Depends(get_current_user)):
+async def transactions_page(
+    request: Request,
+    user=Depends(get_current_user),
+    date_from: Optional[str] = Query(None),
+    date_to:   Optional[str] = Query(None),
+    type_filter: Optional[str] = Query(None),
+):
     with db_cursor() as cur:
-        cur.execute(
-            f"SELECT * FROM transactions WHERE user_id={P} ORDER BY date DESC, created_at DESC LIMIT 200",
-            (user["sub"],))
+        query  = f"SELECT * FROM transactions WHERE user_id={P}"
+        params = [user["sub"]]
+
+        if date_from:
+            query += f" AND date >= {P}"; params.append(date_from)
+        if date_to:
+            query += f" AND date <= {P}"; params.append(date_to)
+        if type_filter and type_filter in ("income", "expense"):
+            query += f" AND type = {P}"; params.append(type_filter)
+
+        query += " ORDER BY date DESC, created_at DESC LIMIT 500"
+        cur.execute(query, params)
         txns = [dict(r) for r in cur.fetchall()]
+
+    # Totals for filtered set
+    filtered_income   = sum(float(r["amount"]) for r in txns if r["type"] == "income")
+    filtered_expenses = sum(float(r["amount"]) for r in txns if r["type"] == "expense")
+
     return templates.TemplateResponse("transactions/list.html", {
         "request": request, "user": user, "transactions": txns,
         "expense_categories": EXPENSE_CATEGORIES,
-        "income_categories": INCOME_CATEGORIES,
+        "income_categories":  INCOME_CATEGORIES,
+        "date_from":     date_from or "",
+        "date_to":       date_to   or "",
+        "type_filter":   type_filter or "",
+        "filtered_income":   round(filtered_income, 2),
+        "filtered_expenses": round(filtered_expenses, 2),
+        "filtered_balance":  round(filtered_income - filtered_expenses, 2),
     })
 
 
@@ -58,6 +87,45 @@ async def delete_transaction(txn_id: int, user=Depends(get_current_user)):
         cur.execute(f"DELETE FROM transactions WHERE id={P} AND user_id={P}", (txn_id, user["sub"]))
     return RedirectResponse("/transactions", status_code=303)
 
+
+# ── CSV Export ────────────────────────────────────────────
+
+@router.get("/export/csv")
+async def export_csv(
+    user=Depends(get_current_user),
+    date_from: Optional[str] = Query(None),
+    date_to:   Optional[str] = Query(None),
+    type_filter: Optional[str] = Query(None),
+):
+    with db_cursor() as cur:
+        query  = f"SELECT date, type, category, description, amount FROM transactions WHERE user_id={P}"
+        params = [user["sub"]]
+        if date_from:
+            query += f" AND date >= {P}"; params.append(date_from)
+        if date_to:
+            query += f" AND date <= {P}"; params.append(date_to)
+        if type_filter and type_filter in ("income", "expense"):
+            query += f" AND type = {P}"; params.append(type_filter)
+        query += " ORDER BY date DESC"
+        cur.execute(query, params)
+        rows = cur.fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Date", "Type", "Category", "Description", "Amount (BWP)"])
+    for r in rows:
+        writer.writerow([r["date"], r["type"], r["category"], r["description"] or "", f"{float(r['amount']):.2f}"])
+
+    output.seek(0)
+    filename = f"fintrack-transactions-{date.today()}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+# ── Budgets ───────────────────────────────────────────────
 
 @router.get("/budgets", response_class=HTMLResponse)
 async def budgets_page(request: Request, user=Depends(get_current_user)):
@@ -106,6 +174,8 @@ async def set_budget(
     return RedirectResponse("/transactions/budgets", status_code=303)
 
 
+# ── API summary (for charts) ──────────────────────────────
+
 @router.get("/api/summary")
 async def api_summary(user=Depends(get_current_user)):
     with db_cursor() as cur:
@@ -114,12 +184,10 @@ async def api_summary(user=Depends(get_current_user)):
 
     income   = sum(r["amount"] for r in rows if r["type"] == "income")
     expenses = sum(r["amount"] for r in rows if r["type"] == "expense")
-
     by_cat: dict = {}
     for r in rows:
         if r["type"] == "expense":
             by_cat[r["category"]] = by_cat.get(r["category"], 0) + float(r["amount"])
-
     by_month: dict = {}
     for r in rows:
         m = str(r["date"])[:7]

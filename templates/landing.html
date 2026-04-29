@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FinTrack — Personal Finance, Upgraded</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080a0d; --surface: #0f1117; --surface2: #161a24;
+      --border: #1c2030; --border2: #252c3f;
+      --accent: #f0a500; --green: #1fd87a; --red: #f04f4f; --blue: #4f8ef0;
+      --text: #e2e6f0; --muted: #5a6278;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text); overflow-x: hidden; }
+    a { text-decoration: none; color: inherit; }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.1rem 3rem;
+      background: rgba(8,10,13,0.85); backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .nav-logo { font-size: 1.3rem; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; }
+    .nav-logo span { color: var(--text); }
+    .nav-links { display: flex; gap: 2rem; align-items: center; }
+    .nav-links a { font-size: 0.88rem; font-weight: 600; color: var(--muted); transition: color 0.15s; }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      padding: 0.55rem 1.25rem; background: var(--accent); color: #000;
+      border-radius: 8px; font-weight: 800; font-size: 0.88rem; transition: all 0.15s;
+    }
+    .nav-cta:hover { background: #ffc82d; transform: translateY(-1px); color: #000; }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 8rem 2rem 4rem; text-align: center;
+      position: relative; overflow: hidden;
+    }
+    .hero-glow {
+      position: absolute; width: 600px; height: 600px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(240,165,0,0.08) 0%, transparent 70%);
+      top: 50%; left: 50%; transform: translate(-50%, -60%);
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.4rem 1rem; border-radius: 20px;
+      background: rgba(240,165,0,0.1); border: 1px solid rgba(240,165,0,0.2);
+      font-size: 0.78rem; font-weight: 700; color: var(--accent);
+      font-family: 'DM Mono', monospace; margin-bottom: 1.75rem;
+      animation: fadeUp 0.6s ease both;
+    }
+    .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.3; } }
+
+    .hero h1 {
+      font-size: clamp(2.8rem, 7vw, 5.5rem); font-weight: 800;
+      letter-spacing: -0.04em; line-height: 1.05;
+      margin-bottom: 1.5rem;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+    .hero h1 .gold { color: var(--accent); }
+    .hero h1 .dim  { color: var(--muted); }
+
+    .hero-sub {
+      font-size: 1.1rem; color: var(--muted); max-width: 520px;
+      line-height: 1.7; margin-bottom: 2.5rem;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+
+    .hero-btns {
+      display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
+      animation: fadeUp 0.6s 0.3s ease both;
+    }
+    .btn-hero-primary {
+      padding: 0.85rem 2rem; background: var(--accent); color: #000;
+      border-radius: 10px; font-weight: 800; font-size: 1rem;
+      transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem;
+    }
+    .btn-hero-primary:hover { background: #ffc82d; transform: translateY(-2px); box-shadow: 0 8px 30px rgba(240,165,0,0.25); color: #000; }
+    .btn-hero-ghost {
+      padding: 0.85rem 2rem; background: transparent; color: var(--text);
+      border: 1px solid var(--border2); border-radius: 10px; font-weight: 700; font-size: 1rem;
+      transition: all 0.2s;
+    }
+    .btn-hero-ghost:hover { border-color: var(--text); transform: translateY(-2px); }
+
+    /* ── TICKER ── */
+    .ticker-wrap {
+      width: 100%; overflow: hidden; padding: 1.5rem 0;
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+      background: var(--surface); margin: 2rem 0 0;
+      animation: fadeUp 0.6s 0.4s ease both;
+    }
+    .ticker {
+      display: flex; gap: 3rem; white-space: nowrap;
+      animation: scroll 20s linear infinite;
+    }
+    .ticker-item {
+      display: flex; align-items: center; gap: 0.75rem;
+      font-size: 0.82rem; font-family: 'DM Mono', monospace; color: var(--muted);
+    }
+    .ticker-item .dot { width: 6px; height: 6px; border-radius: 50%; }
+    @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+    /* ── STATS ── */
+    .stats {
+      display: flex; justify-content: center; gap: 4rem; flex-wrap: wrap;
+      padding: 5rem 2rem; border-bottom: 1px solid var(--border);
+    }
+    .stat { text-align: center; }
+    .stat-num { font-size: 2.5rem; font-weight: 800; letter-spacing: -0.04em; color: var(--accent); font-family: 'DM Mono', monospace; }
+    .stat-label { font-size: 0.82rem; color: var(--muted); margin-top: 0.25rem; }
+
+    /* ── FEATURES ── */
+    .features { padding: 6rem 2rem; max-width: 1100px; margin: 0 auto; }
+    .section-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: var(--accent); font-family: 'DM Mono', monospace; margin-bottom: 1rem; }
+    .section-title { font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 800; letter-spacing: -0.03em; margin-bottom: 1rem; }
+    .section-sub { font-size: 1rem; color: var(--muted); max-width: 480px; line-height: 1.7; margin-bottom: 3.5rem; }
+
+    .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+    .feature-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1.75rem;
+      transition: all 0.2s; position: relative; overflow: hidden;
+    }
+    .feature-card::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(240,165,0,0.04), transparent);
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .feature-card:hover { border-color: var(--border2); transform: translateY(-3px); box-shadow: 0 12px 40px rgba(0,0,0,0.3); }
+    .feature-card:hover::before { opacity: 1; }
+    .feature-icon { font-size: 1.75rem; margin-bottom: 1rem; }
+    .feature-title { font-size: 1rem; font-weight: 800; margin-bottom: 0.5rem; }
+    .feature-desc { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
+    .feature-tag { display: inline-block; margin-top: 0.85rem; padding: 0.2rem 0.6rem; background: rgba(240,165,0,0.1); border-radius: 20px; font-size: 0.7rem; font-weight: 700; color: var(--accent); font-family: 'DM Mono', monospace; }
+
+    /* ── SCORE PREVIEW ── */
+    .score-preview {
+      max-width: 1100px; margin: 0 auto 6rem;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 3rem;
+      align-items: center; padding: 0 2rem;
+    }
+    .score-preview-left h2 { font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 800; letter-spacing: -0.03em; margin-bottom: 1rem; }
+    .score-preview-left p { color: var(--muted); line-height: 1.7; margin-bottom: 1.5rem; }
+    .dimension {
+      display: flex; align-items: center; gap: 1rem;
+      padding: 0.75rem 0; border-bottom: 1px solid var(--border);
+    }
+    .dimension:last-child { border: none; }
+    .dim-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .dim-label { flex: 1; font-size: 0.88rem; font-weight: 600; }
+    .dim-pts { font-family: 'DM Mono', monospace; font-size: 0.8rem; color: var(--accent); }
+    .score-card-preview {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: 2rem; text-align: center;
+    }
+    .preview-score-num { font-size: 5rem; font-weight: 800; color: var(--accent); letter-spacing: -0.05em; font-family: 'DM Mono', monospace; line-height: 1; }
+    .preview-score-label { font-size: 0.82rem; color: var(--muted); font-family: 'DM Mono', monospace; margin: 0.5rem 0 1.5rem; }
+    .preview-bars { display: flex; flex-direction: column; gap: 0.6rem; text-align: left; }
+    .preview-bar-row { display: flex; align-items: center; gap: 0.75rem; font-size: 0.78rem; color: var(--muted); }
+    .preview-bar-bg { flex: 1; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .preview-bar-fill { height: 100%; border-radius: 3px; }
+
+    /* ── CTA ── */
+    .cta-section {
+      text-align: center; padding: 6rem 2rem;
+      background: linear-gradient(180deg, transparent, var(--surface));
+      border-top: 1px solid var(--border);
+    }
+    .cta-section h2 { font-size: clamp(1.8rem, 4vw, 3rem); font-weight: 800; letter-spacing: -0.03em; margin-bottom: 1rem; }
+    .cta-section p { color: var(--muted); font-size: 1rem; margin-bottom: 2.5rem; }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border); padding: 2rem 3rem;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 0.8rem; color: var(--muted); flex-wrap: wrap; gap: 1rem;
+    }
+    .footer-logo { font-weight: 800; color: var(--accent); }
+    .footer-logo span { color: var(--muted); }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 900px) {
+      nav { padding: 1rem 1.5rem; }
+      .nav-links { display: none; }
+      .features-grid { grid-template-columns: 1fr 1fr; }
+      .score-preview { grid-template-columns: 1fr; }
+      .stats { gap: 2rem; }
+    }
+    @media (max-width: 580px) {
+      .features-grid { grid-template-columns: 1fr; }
+      footer { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">Fin<span>Track</span></div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#score">Health Score</a>
+    <a href="/auth/login">Sign in</a>
+    <a href="/auth/register" class="nav-cta">Get started →</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-badge"><div class="badge-dot"></div> Free · No ads · Open source</div>
+  <h1>Your money,<br><span class="gold">finally</span> <span class="dim">under control</span></h1>
+  <p class="hero-sub">Track income and expenses, set budgets, and get a real Financial Health Score — all in one clean dashboard.</p>
+  <div class="hero-btns">
+    <a href="/auth/register" class="btn-hero-primary">Start tracking free →</a>
+    <a href="/auth/login" class="btn-hero-ghost">Sign in</a>
+  </div>
+
+  <!-- Ticker -->
+  <div class="ticker-wrap">
+    <div class="ticker">
+      {% for item in [
+        ('📊','Live charts'),('💰','Budget tracking'),('🎯','Financial Health Score'),
+        ('📈','Monthly trends'),('🛡️','Emergency fund tracking'),('📥','CSV export'),
+        ('🔐','Secure auth'),('💡','Spending insights'),('📊','Live charts'),
+        ('💰','Budget tracking'),('🎯','Financial Health Score'),('📈','Monthly trends'),
+        ('🛡️','Emergency fund tracking'),('📥','CSV export'),('🔐','Secure auth'),('💡','Spending insights')
+      ] %}
+      <div class="ticker-item">
+        <span>{{ item[0] }}</span>
+        <span>{{ item[1] }}</span>
+        <span style="color:var(--border2)">·</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="stats reveal">
+  <div class="stat">
+    <div class="stat-num">5</div>
+    <div class="stat-label">Score dimensions</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">100</div>
+    <div class="stat-label">Max health score</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">13</div>
+    <div class="stat-label">Expense categories</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">P0</div>
+    <div class="stat-label">Cost to use</div>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="reveal">
+    <div class="section-label">What you get</div>
+    <div class="section-title">Everything you need.<br>Nothing you don't.</div>
+    <p class="section-sub">Built for real people who want to understand their money without a finance degree.</p>
+  </div>
+
+  <div class="features-grid">
+    {% for icon, title, desc, tag in [
+      ('📊', 'Interactive Charts', 'Live Chart.js visualizations — spending donut, monthly income vs expense trend, and an animated health score gauge.', 'Chart.js'),
+      ('💰', 'Budget Tracking', 'Set monthly limits per category. Animated progress bars show exactly how close you are to your limit, color-coded red when at risk.', 'per category'),
+      ('🎯', 'Financial Health Score', 'A 0–100 score across 5 dimensions adapted from CapitalPyre\'s CRS engine. Get actionable tips to improve it.', 'CRS engine'),
+      ('📥', 'CSV Export', 'Download your full transaction history as a spreadsheet with one click. Filter by date range first, then export exactly what you need.', 'new feature'),
+      ('📅', 'Date Range Filter', 'Filter transactions by any date range. See just this week, this month, or a custom period — then export the filtered results.', 'new feature'),
+      ('🔐', 'Secure Auth', 'bcrypt password hashing and JWT cookie tokens. Your data stays yours — no third-party auth services.', 'bcrypt + JWT'),
+    ] %}
+    <div class="feature-card reveal">
+      <div class="feature-icon">{{ icon }}</div>
+      <div class="feature-title">{{ title }}</div>
+      <div class="feature-desc">{{ desc }}</div>
+      <div class="feature-tag">{{ tag }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- SCORE PREVIEW -->
+<section id="score" style="padding: 0 0 2rem;">
+  <div class="score-preview reveal">
+    <div class="score-preview-left">
+      <div class="section-label">Financial Health Score</div>
+      <h2>Know exactly where you stand financially</h2>
+      <p>FinTrack scores your finances across 5 dimensions and gives you specific tips to improve — not just a number, but a roadmap.</p>
+      <div>
+        {% for icon, label, pts in [
+          ('📈','Income Stability','25 pts'),
+          ('💰','Savings Health','25 pts'),
+          ('🎯','Budget Discipline','20 pts'),
+          ('🛡️','Emergency Fund','15 pts'),
+          ('🌱','Spending Diversity','15 pts'),
+        ] %}
+        <div class="dimension">
+          <div class="dim-icon">{{ icon }}</div>
+          <div class="dim-label">{{ label }}</div>
+          <div class="dim-pts">{{ pts }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="score-card-preview">
+      <div class="preview-score-num">74</div>
+      <div class="preview-score-label">/ 100 · good</div>
+      <div class="preview-bars">
+        {% for label, pct, color in [
+          ('Income Stability', 88, '#1fd87a'),
+          ('Savings Health', 72, '#f0a500'),
+          ('Budget Discipline', 70, '#f0a500'),
+          ('Emergency Fund', 67, '#f0a500'),
+          ('Spending Diversity', 60, '#f0a500'),
+        ] %}
+        <div class="preview-bar-row">
+          <span style="width:120px;flex-shrink:0;">{{ label }}</span>
+          <div class="preview-bar-bg">
+            <div class="preview-bar-fill" style="width:{{ pct }}%;background:{{ color }};"></div>
+          </div>
+          <span>{{ pct }}%</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section reveal">
+  <h2>Ready to take control?</h2>
+  <p>Free forever. No credit card. No nonsense.</p>
+  <a href="/auth/register" class="btn-hero-primary" style="display:inline-flex;">
+    Create your account →
+  </a>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div><span class="footer-logo">Fin<span>Track</span></span> — Personal finance, upgraded.</div>
+  <div style="display:flex;gap:1.5rem;">
+    <a href="/auth/login" style="color:var(--muted);">Sign in</a>
+    <a href="/auth/register" style="color:var(--muted);">Register</a>
+  </div>
+</footer>
+
+<script>
+// Scroll reveal
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); } });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// Countup animation on stats
+function countUp(el, target, duration = 1500) {
+  const start = performance.now();
+  const isFloat = String(target).includes('.');
+  el.addEventListener('transitionend', function once() {
+    el.removeEventListener('transitionend', once);
+  });
+  function update(now) {
+    const progress = Math.min((now - start) / duration, 1);
+    const ease = 1 - Math.pow(1 - progress, 3);
+    const val = ease * target;
+    el.textContent = isFloat ? val.toFixed(1) : Math.round(val);
+    if (progress < 1) requestAnimationFrame(update);
+  }
+  requestAnimationFrame(update);
+}
+
+const statsObserver = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.querySelectorAll('.stat-num').forEach(el => {
+        const raw = el.textContent.replace(/[^0-9.]/g, '');
+        const prefix = el.textContent.match(/^[^0-9]*/)[0];
+        const num = parseFloat(raw);
+        if (!isNaN(num)) countUp(el, num);
+      });
+      statsObserver.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.3 });
+document.querySelector('.stats') && statsObserver.observe(document.querySelector('.stats'));
+</script>
+</body>
+</html>

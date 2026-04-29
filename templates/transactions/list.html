@@ -3,131 +3,172 @@
 
 {% block head %}
 <style>
-  .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; }
-  .tab { padding: 0.65rem 1.25rem; font-size: 0.85rem; font-weight: 700; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
-  .filter-bar { display: flex; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
-  .filter-bar select, .filter-bar input { flex: 1; min-width: 120px; }
-  .txn-amount { font-family: 'DM Mono', monospace; font-weight: 700; text-align: right; white-space: nowrap; }
-  .del-btn { background: none; border: none; color: var(--muted2); cursor: pointer; font-size: 1rem; padding: 0.25rem 0.4rem; border-radius: 4px; transition: all 0.1s; }
-  .del-btn:hover { color: var(--red); background: var(--red-dim); }
-  #addForm { transition: all 0.3s; }
-  .loading-overlay { display:none; position:absolute; inset:0; background:rgba(8,10,13,0.7); border-radius:var(--radius); align-items:center; justify-content:center; }
-  .loading-overlay.show { display:flex; }
-  .spinner { width:28px;height:28px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite; }
+  .tab-bar { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:1.5rem; }
+  .tab { padding:0.65rem 1.25rem; font-size:0.85rem; font-weight:700; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; transition:all 0.15s; }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; }
+  .form-row { display:grid; grid-template-columns:1fr 1fr; gap:0.85rem; }
+
+  /* Filter bar */
+  .filter-section { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1.25rem 1.5rem; margin-bottom:1.25rem; }
+  .filter-title { font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin-bottom:0.85rem; }
+  .filter-row { display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap; }
+  .filter-group { display:flex; flex-direction:column; gap:0.3rem; min-width:140px; flex:1; }
+  .filter-group label { font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); }
+  .filter-group input, .filter-group select { padding:0.55rem 0.75rem; font-size:0.85rem; }
+  .filter-actions { display:flex; gap:0.5rem; flex-shrink:0; }
+
+  /* Export button */
+  .export-btn {
+    display:inline-flex; align-items:center; gap:0.4rem;
+    padding:0.55rem 1rem; background:rgba(31,216,122,0.1);
+    border:1px solid rgba(31,216,122,0.3); color:var(--green);
+    border-radius:var(--radius-sm); font-family:'Syne',sans-serif;
+    font-weight:700; font-size:0.82rem; cursor:pointer; transition:all 0.15s;
+    text-decoration:none;
+  }
+  .export-btn:hover { background:rgba(31,216,122,0.2); transform:translateY(-1px); }
+
+  /* Summary strip */
+  .filter-summary {
+    display:flex; gap:1.5rem; padding:0.85rem 1.25rem;
+    background:var(--surface2); border:1px solid var(--border);
+    border-radius:var(--radius-sm); margin-bottom:1rem;
+    font-size:0.82rem; font-family:'DM Mono',monospace; flex-wrap:wrap;
+  }
+  .fs-item { display:flex; gap:0.4rem; align-items:center; }
+  .fs-label { color:var(--muted); }
+
+  /* Table */
+  .txn-amount { font-family:'DM Mono',monospace; font-weight:700; text-align:right; white-space:nowrap; }
+  .del-btn { background:none; border:none; color:var(--muted2); cursor:pointer; font-size:1rem; padding:0.25rem 0.4rem; border-radius:4px; transition:all 0.1s; }
+  .del-btn:hover { color:var(--red); background:var(--red-dim); }
+  .spinner-wrap { display:none; position:absolute; inset:0; background:rgba(8,10,13,0.7); border-radius:var(--radius); align-items:center; justify-content:center; }
+  .spinner-wrap.show { display:flex; }
+  .spinner { width:28px; height:28px; border:3px solid var(--border2); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
+
+  @media(max-width:600px) { .form-row { grid-template-columns:1fr; } .filter-row { flex-direction:column; } }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-header fade-up">
   <div class="page-title">Transactions</div>
-  <div class="page-sub">{{ transactions|length }} records — income & expense log</div>
+  <div class="page-sub">{{ transactions|length }} records shown</div>
 </div>
 
-<!-- Add transaction tabs -->
+<!-- Add transaction card -->
 <div class="card fade-up fade-up-1" style="margin-bottom:1.25rem;position:relative;">
-  <div class="loading-overlay" id="formLoader"><div class="spinner"></div></div>
+  <div class="spinner-wrap" id="formLoader"><div class="spinner"></div></div>
   <div class="tab-bar">
-    <div class="tab active" onclick="switchTab('income', this)">➕ Add Income</div>
-    <div class="tab" onclick="switchTab('expense', this)">➖ Add Expense</div>
+    <div class="tab active" onclick="switchTab('income',this)">➕ Add Income</div>
+    <div class="tab" onclick="switchTab('expense',this)">➖ Add Expense</div>
   </div>
 
-  <!-- Income form -->
   <div class="tab-panel active" id="panel-income">
-    <form id="addForm" method="POST" action="/transactions/add" onsubmit="handleSubmit(event)">
+    <form method="POST" action="/transactions/add" onsubmit="document.getElementById('formLoader').classList.add('show')">
       <input type="hidden" name="type" value="income">
       <div class="form-row">
-        <div class="form-group">
-          <label>Amount (BWP)</label>
-          <input type="number" name="amount" step="0.01" min="0.01" placeholder="0.00" required id="income-amount">
-        </div>
-        <div class="form-group">
-          <label>Category</label>
-          <select name="category" required>
-            {% for c in income_categories %}<option>{{ c }}</option>{% endfor %}
-          </select>
-        </div>
+        <div class="form-group"><label>Amount (BWP)</label><input type="number" name="amount" step="0.01" min="0.01" placeholder="0.00" required></div>
+        <div class="form-group"><label>Category</label><select name="category" required>{% for c in income_categories %}<option>{{ c }}</option>{% endfor %}</select></div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Description (optional)</label>
-          <input type="text" name="description" placeholder="e.g. Monthly salary">
-        </div>
-        <div class="form-group">
-          <label>Date</label>
-          <input type="date" name="date_val" id="income-date">
-        </div>
+        <div class="form-group"><label>Description (optional)</label><input type="text" name="description" placeholder="e.g. Monthly salary"></div>
+        <div class="form-group"><label>Date</label><input type="date" name="date_val" class="today-date"></div>
       </div>
       <button type="submit" class="btn btn-success">Record income →</button>
     </form>
   </div>
 
-  <!-- Expense form -->
   <div class="tab-panel" id="panel-expense">
-    <form method="POST" action="/transactions/add" onsubmit="handleSubmit(event)">
+    <form method="POST" action="/transactions/add" onsubmit="document.getElementById('formLoader').classList.add('show')">
       <input type="hidden" name="type" value="expense">
       <div class="form-row">
-        <div class="form-group">
-          <label>Amount (BWP)</label>
-          <input type="number" name="amount" step="0.01" min="0.01" placeholder="0.00" required>
-        </div>
-        <div class="form-group">
-          <label>Category</label>
-          <select name="category" required>
-            {% for c in expense_categories %}<option>{{ c }}</option>{% endfor %}
-          </select>
-        </div>
+        <div class="form-group"><label>Amount (BWP)</label><input type="number" name="amount" step="0.01" min="0.01" placeholder="0.00" required></div>
+        <div class="form-group"><label>Category</label><select name="category" required>{% for c in expense_categories %}<option>{{ c }}</option>{% endfor %}</select></div>
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label>Description (optional)</label>
-          <input type="text" name="description" placeholder="e.g. Groceries">
-        </div>
-        <div class="form-group">
-          <label>Date</label>
-          <input type="date" name="date_val" id="expense-date">
-        </div>
+        <div class="form-group"><label>Description (optional)</label><input type="text" name="description" placeholder="e.g. Groceries"></div>
+        <div class="form-group"><label>Date</label><input type="date" name="date_val" class="today-date"></div>
       </div>
       <button type="submit" class="btn btn-danger" style="background:var(--red);color:#fff;border:none;">Record expense →</button>
     </form>
   </div>
 </div>
 
-<!-- Transaction list -->
-<div class="card fade-up fade-up-2">
-  <div class="card-title">
-    All Transactions
-    <div style="display:flex;gap:0.5rem;align-items:center;">
-      <input type="text" id="searchInput" placeholder="Search…" style="width:160px;padding:0.4rem 0.7rem;font-size:0.82rem;" oninput="filterTable()">
-      <select id="typeFilter" onchange="filterTable()" style="width:120px;padding:0.4rem 0.7rem;font-size:0.82rem;">
-        <option value="">All types</option>
-        <option value="income">Income</option>
-        <option value="expense">Expense</option>
-      </select>
+<!-- Filter + Export bar -->
+<div class="filter-section fade-up fade-up-2">
+  <div class="filter-title">🔍 Filter & Export</div>
+  <form method="GET" action="/transactions">
+    <div class="filter-row">
+      <div class="filter-group">
+        <label>From date</label>
+        <input type="date" name="date_from" value="{{ date_from }}">
+      </div>
+      <div class="filter-group">
+        <label>To date</label>
+        <input type="date" name="date_to" value="{{ date_to }}">
+      </div>
+      <div class="filter-group">
+        <label>Type</label>
+        <select name="type_filter">
+          <option value="" {% if not type_filter %}selected{% endif %}>All types</option>
+          <option value="income"  {% if type_filter == 'income' %}selected{% endif %}>Income only</option>
+          <option value="expense" {% if type_filter == 'expense' %}selected{% endif %}>Expenses only</option>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit" class="btn btn-primary">Filter</button>
+        <a href="/transactions" class="btn btn-ghost">Clear</a>
+        <!-- Export CSV — passes current filters -->
+        <a href="/transactions/export/csv?date_from={{ date_from }}&date_to={{ date_to }}&type_filter={{ type_filter }}"
+           class="export-btn" title="Download as spreadsheet">
+          📥 Export CSV
+        </a>
+      </div>
     </div>
+  </form>
+</div>
+
+<!-- Filtered totals strip -->
+{% if transactions %}
+<div class="filter-summary fade-up fade-up-2">
+  <div class="fs-item"><span class="fs-label">Showing</span><strong>{{ transactions|length }}</strong><span class="fs-label">transactions</span></div>
+  <div class="fs-item"><span class="fs-label">Income:</span><strong style="color:var(--green)">P {{ "%.2f"|format(filtered_income) }}</strong></div>
+  <div class="fs-item"><span class="fs-label">Expenses:</span><strong style="color:var(--red)">P {{ "%.2f"|format(filtered_expenses) }}</strong></div>
+  <div class="fs-item"><span class="fs-label">Net:</span>
+    <strong style="color:{% if filtered_balance >= 0 %}var(--green){% else %}var(--red){% endif %}">
+      P {{ "%.2f"|format(filtered_balance) }}
+    </strong>
   </div>
+</div>
+{% endif %}
+
+<!-- Transactions table -->
+<div class="card fade-up fade-up-3">
+  <div class="card-title">
+    Transactions
+    <input type="text" id="searchInput" placeholder="Quick search…"
+      style="width:180px;padding:0.4rem 0.7rem;font-size:0.82rem;" oninput="liveSearch()">
+  </div>
+
   {% if transactions %}
   <div class="table-wrap">
     <table id="txnTable">
       <thead>
-        <tr>
-          <th>Date</th><th>Type</th><th>Category</th><th>Description</th>
-          <th style="text-align:right">Amount</th><th></th>
-        </tr>
+        <tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th style="text-align:right">Amount</th><th></th></tr>
       </thead>
       <tbody>
         {% for t in transactions %}
-        <tr data-type="{{ t.type }}" data-search="{{ t.category|lower }} {{ (t.description or '')|lower }}">
+        <tr data-search="{{ t.category|lower }} {{ (t.description or '')|lower }} {{ t.type }}">
           <td class="mono" style="color:var(--muted);font-size:0.8rem;">{{ t.date }}</td>
           <td><span class="badge badge-{{ t.type }}">{{ t.type }}</span></td>
           <td style="font-weight:600;">{{ t.category }}</td>
           <td style="color:var(--muted);font-size:0.85rem;">{{ t.description or '—' }}</td>
-          <td class="txn-amount" style="color:{% if t.type == 'income' %}var(--green){% else %}var(--red){% endif %}">
-            {% if t.type == 'income' %}+{% else %}−{% endif %}P {{ "%.2f"|format(t.amount) }}
+          <td class="txn-amount" style="color:{% if t.type=='income' %}var(--green){% else %}var(--red){% endif %}">
+            {% if t.type=='income' %}+{% else %}−{% endif %}P {{ "%.2f"|format(t.amount) }}
           </td>
           <td>
             <form method="POST" action="/transactions/delete/{{ t.id }}" style="display:inline;"
@@ -143,7 +184,7 @@
   {% else %}
   <div class="empty-state">
     <div class="icon">📋</div>
-    <p>No transactions yet. Add your first one above.</p>
+    <p>No transactions found. Try adjusting the filters or add your first one above.</p>
   </div>
   {% endif %}
 </div>
@@ -151,9 +192,8 @@
 
 {% block scripts %}
 <script>
-// Set today on date inputs
-document.querySelectorAll('input[type="date"]').forEach(el => {
-  el.value = new Date().toISOString().split('T')[0];
+document.querySelectorAll('.today-date').forEach(el => {
+  if (!el.value) el.value = new Date().toISOString().split('T')[0];
 });
 
 function switchTab(type, el) {
@@ -163,17 +203,10 @@ function switchTab(type, el) {
   document.getElementById('panel-' + type).classList.add('active');
 }
 
-function handleSubmit(e) {
-  document.getElementById('formLoader').classList.add('show');
-}
-
-function filterTable() {
-  const search = document.getElementById('searchInput').value.toLowerCase();
-  const type   = document.getElementById('typeFilter').value;
+function liveSearch() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
   document.querySelectorAll('#txnTable tbody tr').forEach(row => {
-    const matchType   = !type || row.dataset.type === type;
-    const matchSearch = !search || row.dataset.search.includes(search) || row.textContent.toLowerCase().includes(search);
-    row.style.display = matchType && matchSearch ? '' : 'none';
+    row.style.display = !q || row.dataset.search.includes(q) || row.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
 }
 </script>

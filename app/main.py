@@ -5,14 +5,14 @@ Deploy: Railway (app) + Supabase (PostgreSQL)
 """
 
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
-import os
 
 from app.database import init_db
 from app.routes import auth, transactions, scoring, dashboard
+from app.utils.auth import optional_user
 
 app = FastAPI(title="FinTrack", version="2.0.0", docs_url="/api/docs")
 
@@ -25,6 +25,7 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
 app.include_router(auth.router,         prefix="/auth",         tags=["auth"])
 app.include_router(transactions.router, prefix="/transactions", tags=["transactions"])
@@ -42,6 +43,9 @@ def health():
     return {"status": "FinTrack running", "version": "2.0.0"}
 
 
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/dashboard")
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    user = optional_user(request)
+    if user:
+        return RedirectResponse(url="/dashboard")
+    return templates.TemplateResponse("landing.html", {"request": request})
