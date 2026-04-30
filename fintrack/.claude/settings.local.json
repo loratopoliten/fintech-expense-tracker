@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.google.com)",
+      "mcp__claude_ai_Google_Drive__read_file_content"
+    ]
+  }
+}

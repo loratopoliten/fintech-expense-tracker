@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — FinTrack{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  .kpi-sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.35rem; font-family: 'DM Mono', monospace; }
+  .chart-empty { text-align:center; padding:3rem 1rem; color:var(--muted); font-size:0.85rem; }
+  .trend-card { margin-bottom:1.5rem; }
+  .section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; }
+  .section-title { font-weight:700; font-size:1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">Dashboard</div>
+<div class="page-sub">{{ current_month }} · {{ txn_count }} transactions recorded</div>
+
+<!-- 4 KPI cards -->
+<div class="grid-4">
+  <div class="card">
+    <div class="card-label">Income this month</div>
+    <div class="card-value green mono">P {{ "%.2f"|format(income_month) }}</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Expenses this month</div>
+    <div class="card-value red mono">P {{ "%.2f"|format(expense_month) }}</div>
+    {% if top_category %}
+    <div class="kpi-sub">Top: {{ top_category }}</div>
+    {% endif %}
+  </div>
+  <div class="card">
+    <div class="card-label">Net this month</div>
+    <div class="card-value {% if balance_month >= 0 %}green{% else %}red{% endif %} mono">
+      P {{ "%.2f"|format(balance_month) }}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">Savings Rate</div>
+    <div class="card-value {% if savings_rate >= 20 %}green{% elif savings_rate > 0 %}gold{% else %}red{% endif %} mono">
+      {{ "%.1f"|format(savings_rate) }}%
+    </div>
+    <div class="kpi-sub">{% if savings_rate >= 20 %}on track{% elif savings_rate > 0 %}below target{% elif income_month == 0 %}no income yet{% else %}overspending{% endif %}</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <!-- Financial Health Score -->
+  <div class="card" style="position:relative;overflow:hidden;">
+    <div class="card-label">Financial Health Score</div>
+    <div style="display:flex;align-items:flex-end;gap:1rem;margin-top:0.5rem;">
+      <div style="font-size:3.5rem;font-weight:800;letter-spacing:-0.04em;
+        color:{% if fhs_band == 'excellent' %}#22c97a{% elif fhs_band == 'good' %}#f0a500{% elif fhs_band == 'fair' %}#e07a00{% else %}#f04f4f{% endif %}">
+        {{ fhs_score }}
+      </div>
+      <div style="padding-bottom:0.5rem;">
+        <div style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;">/ 100</div>
+        <div style="font-size:0.85rem;font-weight:700;color:var(--muted);text-transform:capitalize;">{{ fhs_band.replace('_',' ') }}</div>
+      </div>
+    </div>
+    <div class="progress-bar" style="margin-top:1rem;">
+      <div class="progress-fill {% if fhs_score >= 75 %}good{% elif fhs_score < 35 %}danger{% endif %}"
+           style="width:{{ fhs_score }}%"></div>
+    </div>
+    <div style="border-top:1px solid var(--border);margin-top:1.25rem;padding-top:1rem;display:flex;flex-direction:column;gap:0.6rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="color:var(--muted);font-size:0.82rem;">All-time income</span>
+        <span class="mono" style="color:var(--green);font-size:0.88rem;">P {{ "%.2f"|format(total_income) }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="color:var(--muted);font-size:0.82rem;">All-time expenses</span>
+        <span class="mono" style="color:var(--red);font-size:0.88rem;">P {{ "%.2f"|format(total_expenses) }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-weight:700;font-size:0.88rem;">Net balance</span>
+        <span class="mono" style="font-weight:800;font-size:1rem;color:{% if net_balance >= 0 %}var(--green){% else %}var(--red){% endif %}">
+          P {{ "%.2f"|format(net_balance) }}
+        </span>
+      </div>
+    </div>
+    <a href="/scoring" style="display:inline-block;margin-top:1rem;font-size:0.82rem;color:var(--accent);">
+      View full breakdown →
+    </a>
+  </div>
+
+  <!-- Spending by Category -->
+  <div class="card">
+    <div class="card-label">Spending by Category</div>
+    <div style="position:relative;height:230px;margin-top:0.5rem;">
+      <canvas id="catChart"></canvas>
+    </div>
+    <div id="catEmpty" class="chart-empty" style="display:none;">
+      No expense data yet — <a href="/transactions">add a transaction</a>
+    </div>
+  </div>
+</div>
+
+<!-- Monthly trend -->
+<div class="card trend-card">
+  <div class="section-header">
+    <div class="section-title">Monthly Income vs Expenses</div>
+    <span id="trendRange" style="font-size:0.75rem;color:var(--muted);font-family:'DM Mono',monospace;"></span>
+  </div>
+  <div style="position:relative;height:200px;">
+    <canvas id="trendChart"></canvas>
+  </div>
+  <div id="trendEmpty" class="chart-empty" style="display:none;">
+    No transaction history yet — <a href="/transactions">add your first entry</a>
+  </div>
+</div>
+
+<!-- Recent transactions -->
+<div class="card">
+  <div class="section-header">
+    <div class="section-title">Recent this month</div>
+    <a href="/transactions" class="btn btn-ghost" style="font-size:0.8rem;padding:0.4rem 0.85rem;">View all</a>
+  </div>
+  {% if recent %}
+  <table>
+    <thead>
+      <tr><th>Date</th><th>Category</th><th>Description</th><th>Type</th><th style="text-align:right">Amount</th></tr>
+    </thead>
+    <tbody>
+      {% for t in recent %}
+      <tr>
+        <td class="mono" style="color:var(--muted);font-size:0.82rem;">{{ t.date }}</td>
+        <td>{{ t.category }}</td>
+        <td style="color:var(--muted);font-size:0.88rem;">{{ t.description or '—' }}</td>
+        <td><span class="badge badge-{{ t.type }}">{{ t.type }}</span></td>
+        <td class="mono" style="text-align:right;color:{% if t.type == 'income' %}var(--green){% else %}var(--red){% endif %}">
+          P {{ "%.2f"|format(t.amount) }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="text-align:center;padding:2rem;color:var(--muted);">
+    No transactions this month. <a href="/transactions">Add your first →</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function () {
+  Chart.defaults.color = '#666c7a';
+  Chart.defaults.font.family = "'DM Mono', monospace";
+
+  let data;
+  try {
+    const res = await fetch('/transactions/api/summary');
+    data = await res.json();
+  } catch (e) {
+    console.error('Failed to load chart data', e);
+    return;
+  }
+
+  // ── Spending by Category (doughnut) ──────────────────────
+  const byCat = data.by_category || {};
+  const catLabels = Object.keys(byCat);
+  const catValues = Object.values(byCat);
+
+  if (catLabels.length > 0) {
+    const palette = [
+      '#f0a500','#22c97a','#f04f4f','#3b82f6','#a855f7',
+      '#14b8a6','#f97316','#ec4899','#84cc16','#06b6d4','#8b5cf6','#ef4444'
+    ];
+    new Chart(document.getElementById('catChart'), {
+      type: 'doughnut',
+      data: {
+        labels: catLabels,
+        datasets: [{
+          data: catValues,
+          backgroundColor: palette.slice(0, catLabels.length),
+          borderWidth: 0,
+          hoverOffset: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '60%',
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              color: '#9aa0af',
+              font: { size: 11 },
+              boxWidth: 10,
+              padding: 10,
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => `  P ${ctx.parsed.toFixed(2)}`
+            }
+          }
+        }
+      }
+    });
+  } else {
+    document.getElementById('catChart').style.display = 'none';
+    document.getElementById('catEmpty').style.display = 'block';
+  }
+
+  // ── Monthly Trend (grouped bar) ───────────────────────────
+  const byMonth = data.by_month || {};
+  const allMonths = Object.keys(byMonth).sort();
+  const months = allMonths.slice(-12);
+
+  if (months.length > 0) {
+    document.getElementById('trendRange').textContent =
+      months.length > 1 ? `${months[0]} – ${months[months.length - 1]}` : months[0];
+
+    new Chart(document.getElementById('trendChart'), {
+      type: 'bar',
+      data: {
+        labels: months,
+        datasets: [
+          {
+            label: 'Income',
+            data: months.map(m => byMonth[m].income || 0),
+            backgroundColor: 'rgba(34,201,122,0.75)',
+            borderRadius: 4,
+            borderSkipped: false,
+          },
+          {
+            label: 'Expenses',
+            data: months.map(m => byMonth[m].expense || 0),
+            backgroundColor: 'rgba(240,79,79,0.75)',
+            borderRadius: 4,
+            borderSkipped: false,
+          },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index' },
+        scales: {
+          x: {
+            ticks: { color: '#666c7a', font: { size: 11 } },
+            grid: { color: '#1e2129' },
+          },
+          y: {
+            ticks: {
+              color: '#666c7a',
+              font: { size: 11 },
+              callback: v => 'P ' + v.toLocaleString()
+            },
+            grid: { color: '#1e2129' },
+            beginAtZero: true,
+          }
+        },
+        plugins: {
+          legend: {
+            labels: { color: '#e8eaf0', font: { family: "'Syne', sans-serif", size: 12 }, boxWidth: 12 }
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.dataset.label}: P ${ctx.parsed.y.toFixed(2)}`
+            }
+          }
+        }
+      }
+    });
+  } else {
+    document.getElementById('trendChart').style.display = 'none';
+    document.getElementById('trendEmpty').style.display = 'block';
+  }
+})();
+</script>
+{% endblock %}
