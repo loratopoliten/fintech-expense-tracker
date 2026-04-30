@@ -14,7 +14,10 @@ def hash_password(plain: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except ValueError:
+        return False
 
 
 def _b64enc(data: bytes) -> str:
@@ -38,7 +41,8 @@ def _verify_token(token: str) -> Optional[dict]:
                                      hashlib.sha256).digest())
         if not hmac.compare_digest(sig, expected):
             return None
-        data = json.loads(base64.urlsafe_b64decode(payload + "=="))
+        padded_payload = payload + "=" * (-len(payload) % 4)
+        data = json.loads(base64.urlsafe_b64decode(padded_payload))
         if data.get("exp", 0) < time.time():
             return None
         return data

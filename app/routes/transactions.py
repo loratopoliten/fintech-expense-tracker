@@ -5,7 +5,7 @@ import io
 from fastapi import APIRouter, Request, Form, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 from app.database import db_cursor, USE_POSTGRES
 from app.utils.auth import get_current_user
@@ -21,6 +21,21 @@ EXPENSE_CATEGORIES = [
 INCOME_CATEGORIES = ["Salary", "Freelance", "Business", "Investment Returns", "Gift", "Other"]
 
 P = "%s" if USE_POSTGRES else "?"
+
+
+def _parse_date(value: str) -> str:
+    value = (value or "").strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(value, fmt).date().isoformat()
+        except ValueError:
+            pass
+    raise ValueError("date must be YYYY-MM-DD or DD/MM/YYYY")
+
+
+def _clean_category(value: str) -> str:
+    category = (value or "").strip()
+    return category or "Other"
 
 
 @router.get("", response_class=HTMLResponse)
@@ -74,6 +89,12 @@ async def add_transaction(
         raise HTTPException(400, "Invalid type")
     if amount <= 0:
         raise HTTPException(400, "Amount must be positive")
+    try:
+        date_val = _parse_date(date_val)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    category = _clean_category(category)
+
     with db_cursor() as cur:
         cur.execute(
             f"INSERT INTO transactions (user_id, type, amount, category, description, date) VALUES ({P},{P},{P},{P},{P},{P})",
@@ -97,6 +118,14 @@ async def export_csv(
     date_to:   Optional[str] = Query(None),
     type_filter: Optional[str] = Query(None),
 ):
+    category = _clean_category(category)
+    if limit_amt <= 0:
+        raise HTTPException(400, "Budget limit must be positive")
+    try:
+        datetime.strptime(f"{month}-01", "%Y-%m-%d")
+    except ValueError as exc:
+        raise HTTPException(400, "Month must be YYYY-MM") from exc
+
     with db_cursor() as cur:
         query  = f"SELECT date, type, category, description, amount FROM transactions WHERE user_id={P}"
         params = [user["sub"]]

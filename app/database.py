@@ -7,6 +7,7 @@ Railway/Supabase sometimes returns postgres:// — both are handled.
 import sqlite3
 import os
 from contextlib import contextmanager
+from typing import Any
 
 _raw_url = os.getenv("DATABASE_URL", "")
 
@@ -31,6 +32,37 @@ if USE_POSTGRES:
         )
 
 
+class DatabaseCursor:
+    """Allow route code to use SQLite-style ? placeholders with either database."""
+
+    def __init__(self, cursor):
+        self.cursor = cursor
+
+    def execute(self, query: str, params: tuple[Any, ...] | list[Any] | None = None):
+        if USE_POSTGRES:
+            query = query.replace("?", "%s")
+        if params is None:
+            return self.cursor.execute(query)
+        return self.cursor.execute(query, params)
+
+    def executemany(self, query: str, seq_of_params):
+        if USE_POSTGRES:
+            query = query.replace("?", "%s")
+        return self.cursor.executemany(query, seq_of_params)
+
+    def executescript(self, script: str):
+        return self.cursor.executescript(script)
+
+    def fetchone(self):
+        return self.cursor.fetchone()
+
+    def fetchall(self):
+        return self.cursor.fetchall()
+
+    def __iter__(self):
+        return iter(self.cursor)
+
+
 def get_db_connection():
     if USE_POSTGRES:
         conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
@@ -39,6 +71,7 @@ def get_db_connection():
         os.makedirs("db", exist_ok=True)
         conn = sqlite3.connect(DATABASE_URL)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA journal_mode=WAL")
         return conn
 
@@ -47,7 +80,7 @@ def get_db_connection():
 def db_cursor():
     conn = get_db_connection()
     try:
-        cur = conn.cursor()
+        cur = DatabaseCursor(conn.cursor())
         yield cur
         conn.commit()
     except Exception:
