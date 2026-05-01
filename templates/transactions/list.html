@@ -18,6 +18,8 @@
   .filter-group label { font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); }
   .filter-group input, .filter-group select { padding:0.55rem 0.75rem; font-size:0.85rem; }
   .filter-actions { display:flex; gap:0.5rem; flex-shrink:0; }
+  .mini-grid { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:0.75rem; align-items:end; }
+  @media(max-width:800px) { .mini-grid { grid-template-columns:1fr; } }
 
   /* Export button */
   .export-btn {
@@ -76,6 +78,9 @@
       </div>
       <div class="form-row">
         <div class="form-group"><label>Description (optional)</label><input type="text" name="description" placeholder="e.g. Monthly salary"></div>
+        <div class="form-group"><label>Tags</label><input type="text" name="tags" placeholder="e.g. school, client"></div>
+      </div>
+      <div class="form-row">
         <div class="form-group"><label>Date</label><input type="date" name="date_val" class="today-date"></div>
       </div>
       <button type="submit" class="btn btn-success">Record income →</button>
@@ -91,11 +96,61 @@
       </div>
       <div class="form-row">
         <div class="form-group"><label>Description (optional)</label><input type="text" name="description" placeholder="e.g. Groceries"></div>
+        <div class="form-group"><label>Tags</label><input type="text" name="tags" placeholder="e.g. home, shared"></div>
+      </div>
+      <div class="form-row">
         <div class="form-group"><label>Date</label><input type="date" name="date_val" class="today-date"></div>
       </div>
       <button type="submit" class="btn btn-danger" style="background:var(--red);color:#fff;border:none;">Record expense →</button>
     </form>
   </div>
+</div>
+
+<div class="card fade-up fade-up-2" style="margin-bottom:1.25rem;">
+  <div class="card-title">Recurring Transactions <form method="POST" action="/transactions/recurring/apply"><button class="btn btn-ghost btn-sm" type="submit">Apply due</button></form></div>
+  <form method="POST" action="/transactions/recurring/add" class="mini-grid">
+    <div class="form-group"><label>Description</label><input type="text" name="description" placeholder="e.g. Monthly allowance"></div>
+    <div class="form-group"><label>Type</label><select name="type"><option value="income">Income</option><option value="expense">Expense</option></select></div>
+    <div class="form-group"><label>Amount</label><input type="number" name="amount" step="0.01" min="0.01" required></div>
+    <div class="form-group"><label>Next date</label><input type="date" name="next_date" class="today-date" required></div>
+    <div class="form-group"><label>Category</label><input type="text" name="category" placeholder="Allowance, Rent..." required></div>
+    <div class="form-group"><label>Tags</label><input type="text" name="tags" placeholder="monthly"></div>
+    <button type="submit" class="btn btn-primary">Save recurring</button>
+  </form>
+  {% if recurring %}
+  <div class="table-wrap" style="margin-top:1rem;">
+    <table>
+      <thead><tr><th>Next</th><th>Type</th><th>Category</th><th>Description</th><th style="text-align:right">Amount</th><th></th></tr></thead>
+      <tbody>
+        {% for r in recurring %}
+        <tr>
+          <td class="mono">{{ r.next_date }}</td>
+          <td><span class="badge badge-{{ r.type }}">{{ r.type }}</span></td>
+          <td>{{ r.category }}</td>
+          <td style="color:var(--muted);">{{ r.description or '—' }}</td>
+          <td class="txn-amount">P {{ "%.2f"|format(r.amount) }}</td>
+          <td><form method="POST" action="/transactions/recurring/delete/{{ r.id }}"><button class="del-btn" type="submit">×</button></form></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card fade-up fade-up-2" style="margin-bottom:1.25rem;">
+  <div class="card-title">Split Transaction <span class="chip">two categories</span></div>
+  <form method="POST" action="/transactions/split/add" class="mini-grid">
+    <div class="form-group"><label>Description</label><input type="text" name="description" placeholder="e.g. Supermarket trip"></div>
+    <div class="form-group"><label>Type</label><select name="type"><option value="expense">Expense</option><option value="income">Income</option></select></div>
+    <div class="form-group"><label>Date</label><input type="date" name="date_val" class="today-date"></div>
+    <div class="form-group"><label>Tags</label><input type="text" name="tags" placeholder="split"></div>
+    <div class="form-group"><label>Category 1</label><input type="text" name="category_1" required></div>
+    <div class="form-group"><label>Amount 1</label><input type="number" name="amount_1" step="0.01" min="0.01" required></div>
+    <div class="form-group"><label>Category 2</label><input type="text" name="category_2" required></div>
+    <div class="form-group"><label>Amount 2</label><input type="number" name="amount_2" step="0.01" min="0.01" required></div>
+    <button type="submit" class="btn btn-primary">Record split</button>
+  </form>
 </div>
 
 <!-- Filter + Export bar -->
@@ -122,6 +177,7 @@
       <div class="filter-actions">
         <button type="submit" class="btn btn-primary">Filter</button>
         <a href="/transactions" class="btn btn-ghost">Clear</a>
+        <a href="/transactions/reports/monthly.txt" class="btn btn-ghost">Monthly report</a>
         <!-- Export CSV — passes current filters -->
         <a href="/transactions/export/csv?date_from={{ date_from }}&date_to={{ date_to }}&type_filter={{ type_filter }}"
            class="export-btn" title="Download as spreadsheet">
@@ -158,15 +214,16 @@
   <div class="table-wrap">
     <table id="txnTable">
       <thead>
-        <tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th style="text-align:right">Amount</th><th></th></tr>
+        <tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th>Tags</th><th style="text-align:right">Amount</th><th></th></tr>
       </thead>
       <tbody>
         {% for t in transactions %}
-        <tr data-search="{{ t.category|lower }} {{ (t.description or '')|lower }} {{ t.type }}">
+        <tr data-search="{{ t.category|lower }} {{ (t.description or '')|lower }} {{ (t.tags or '')|lower }} {{ t.type }}">
           <td class="mono" style="color:var(--muted);font-size:0.8rem;">{{ t.date }}</td>
           <td><span class="badge badge-{{ t.type }}">{{ t.type }}</span></td>
           <td style="font-weight:600;">{{ t.category }}</td>
           <td style="color:var(--muted);font-size:0.85rem;">{{ t.description or '—' }}</td>
+          <td style="color:var(--muted);font-size:0.8rem;">{{ t.tags or '—' }}</td>
           <td class="txn-amount" style="color:{% if t.type=='income' %}var(--green){% else %}var(--red){% endif %}">
             {% if t.type=='income' %}+{% else %}−{% endif %}P {{ "%.2f"|format(t.amount) }}
           </td>

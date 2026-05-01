@@ -106,6 +106,9 @@ def _sqlite_init(cur):
             amount      REAL    NOT NULL CHECK(amount > 0),
             category    TEXT    NOT NULL,
             description TEXT,
+            tags        TEXT,
+            is_recurring INTEGER NOT NULL DEFAULT 0,
+            parent_transaction_id INTEGER REFERENCES transactions(id),
             date        DATE    NOT NULL DEFAULT (DATE('now')),
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -126,7 +129,44 @@ def _sqlite_init(cur):
             tips         TEXT    NOT NULL,
             computed_at  DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS recurring_transactions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id),
+            type        TEXT    NOT NULL CHECK(type IN ('income','expense')),
+            amount      REAL    NOT NULL CHECK(amount > 0),
+            category    TEXT    NOT NULL,
+            description TEXT,
+            tags        TEXT,
+            frequency   TEXT    NOT NULL DEFAULT 'monthly',
+            next_date   DATE    NOT NULL,
+            active      INTEGER NOT NULL DEFAULT 1,
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS savings_goals (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL REFERENCES users(id),
+            name       TEXT    NOT NULL,
+            target_amt REAL    NOT NULL CHECK(target_amt > 0),
+            saved_amt  REAL    NOT NULL DEFAULT 0 CHECK(saved_amt >= 0),
+            due_date   DATE,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     """)
+    _ensure_sqlite_columns(cur, "transactions", {
+        "tags": "TEXT",
+        "is_recurring": "INTEGER NOT NULL DEFAULT 0",
+        "parent_transaction_id": "INTEGER REFERENCES transactions(id)",
+    })
+
+
+def _ensure_sqlite_columns(cur, table_name, columns):
+    cur.execute(f"PRAGMA table_info({table_name})")
+    existing = {row["name"] for row in cur.fetchall()}
+    for column_name, definition in columns.items():
+        if column_name not in existing:
+            cur.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
 
 def _postgres_init(cur):
@@ -140,6 +180,9 @@ def _postgres_init(cur):
             type TEXT NOT NULL CHECK(type IN ('income','expense')),
             amount NUMERIC NOT NULL CHECK(amount > 0),
             category TEXT NOT NULL, description TEXT,
+            tags TEXT,
+            is_recurring BOOLEAN NOT NULL DEFAULT FALSE,
+            parent_transaction_id INT REFERENCES transactions(id),
             date DATE NOT NULL DEFAULT CURRENT_DATE,
             created_at TIMESTAMPTZ DEFAULT NOW())""",
         """CREATE TABLE IF NOT EXISTS budgets (
@@ -151,6 +194,25 @@ def _postgres_init(cur):
             score NUMERIC NOT NULL, breakdown TEXT NOT NULL,
             band TEXT NOT NULL, tips TEXT NOT NULL,
             computed_at TIMESTAMPTZ DEFAULT NOW())""",
+        """CREATE TABLE IF NOT EXISTS recurring_transactions (
+            id SERIAL PRIMARY KEY, user_id INT NOT NULL REFERENCES users(id),
+            type TEXT NOT NULL CHECK(type IN ('income','expense')),
+            amount NUMERIC NOT NULL CHECK(amount > 0),
+            category TEXT NOT NULL, description TEXT, tags TEXT,
+            frequency TEXT NOT NULL DEFAULT 'monthly',
+            next_date DATE NOT NULL,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW())""",
+        """CREATE TABLE IF NOT EXISTS savings_goals (
+            id SERIAL PRIMARY KEY, user_id INT NOT NULL REFERENCES users(id),
+            name TEXT NOT NULL,
+            target_amt NUMERIC NOT NULL CHECK(target_amt > 0),
+            saved_amt NUMERIC NOT NULL DEFAULT 0 CHECK(saved_amt >= 0),
+            due_date DATE,
+            created_at TIMESTAMPTZ DEFAULT NOW())""",
+        "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS tags TEXT",
+        "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS parent_transaction_id INT REFERENCES transactions(id)",
     ]
     for stmt in statements:
         cur.execute(stmt)

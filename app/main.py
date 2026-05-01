@@ -13,6 +13,7 @@ import os
 
 from app.database import init_db
 from app.routes import auth, transactions, scoring, dashboard
+from app.services.scheduler_service import start_scheduler
 from app.utils.auth import optional_user
 
 app = FastAPI(title="FinTrack", version="2.0.0", docs_url="/api/docs")
@@ -40,10 +41,14 @@ app.include_router(transactions.router, prefix="/transactions", tags=["transacti
 app.include_router(scoring.router,      prefix="/scoring",      tags=["scoring"])
 app.include_router(dashboard.router,    prefix="",              tags=["dashboard"])
 
+_scheduler = None
+
 
 @app.on_event("startup")
 async def startup():
+    global _scheduler
     init_db()
+    _scheduler = start_scheduler()
 
 
 @app.get("/health")

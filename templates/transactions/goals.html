@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Savings Goals — FinTrack{% endblock %}
+
+{% block content %}
+<div class="page-header fade-up">
+  <div class="page-title">Savings Goals</div>
+  <div class="page-sub">Track target amounts and progress visually</div>
+</div>
+
+<div class="card fade-up fade-up-1" style="margin-bottom:1.25rem;">
+  <div class="card-title">Add Goal</div>
+  <form method="POST" action="/transactions/goals/add" class="grid-4" style="margin-bottom:0;">
+    <div class="form-group"><label>Name</label><input type="text" name="name" placeholder="Laptop" required></div>
+    <div class="form-group"><label>Target (BWP)</label><input type="number" name="target_amt" step="0.01" min="0.01" required></div>
+    <div class="form-group"><label>Saved now</label><input type="number" name="saved_amt" step="0.01" min="0" value="0"></div>
+    <div class="form-group"><label>Due date</label><input type="date" name="due_date"></div>
+    <button type="submit" class="btn btn-primary">Save goal</button>
+  </form>
+</div>
+
+<div class="grid-2 fade-up fade-up-2">
+  {% for goal in goals %}
+  <div class="card">
+    <div class="card-title">
+      {{ goal.name }}
+      <form method="POST" action="/transactions/goals/delete/{{ goal.id }}" onsubmit="return confirm('Delete this goal?')">
+        <button class="del-btn" type="submit">×</button>
+      </form>
+    </div>
+    <div class="card-value gold">P {{ "%.0f"|format(goal.saved_amt) }}</div>
+    <div class="card-sub">of P {{ "%.2f"|format(goal.target_amt) }}{% if goal.due_date %} by {{ goal.due_date }}{% endif %}</div>
+    <div class="progress-bar" style="margin:1rem 0 0.75rem;">
+      <div class="progress-fill fill-green" data-width="{{ goal.pct }}" style="width:{{ goal.pct }}%"></div>
+    </div>
+    <div class="card-sub">{{ goal.pct }}% complete · P {{ "%.2f"|format(goal.remaining) }} remaining</div>
+    <form method="POST" action="/transactions/goals/update/{{ goal.id }}" style="margin-top:1rem;display:flex;gap:0.5rem;align-items:end;">
+      <div class="form-group" style="margin:0;flex:1;"><label>Update saved</label><input type="number" name="saved_amt" step="0.01" min="0" value="{{ goal.saved_amt }}"></div>
+      <button class="btn btn-ghost" type="submit">Update</button>
+    </form>
+  </div>
+  {% else %}
+  <div class="card empty-state">
+    <div class="icon">◎</div>
+    <p>No goals yet. Add your first target above.</p>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -26,6 +26,19 @@
       --radius:    12px;
       --radius-sm: 8px;
     }
+    body.light-mode {
+      --bg: #f6f7fb;
+      --surface: #ffffff;
+      --surface2: #edf0f6;
+      --border: #dfe3ec;
+      --border2: #c8cedb;
+      --text: #161a24;
+      --muted: #687083;
+      --muted2: #9299a8;
+      --green-dim: #dff8eb;
+      --red-dim: #ffe4e4;
+      --accent-dim: #f9df9c;
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
     body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 15px; line-height: 1.5; }
@@ -251,6 +264,10 @@
         <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
         Budgets
       </a>
+      <a class="nav-item {% if '/transactions/goals' in request.url.path %}active{% endif %}" href="/transactions/goals">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        Goals
+      </a>
       <a class="nav-item {% if '/scoring' in request.url.path %}active{% endif %}" href="/scoring">
         <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         Health Score
@@ -265,6 +282,7 @@
         </div>
       </div>
       <a href="/auth/logout"><button class="logout-btn">↩ Sign out</button></a>
+      <button class="logout-btn" type="button" style="margin-top:0.5rem;" onclick="toggleTheme()">Toggle theme</button>
     </div>
   </aside>
   {% endif %}
@@ -287,12 +305,19 @@ function showToast(msg, color) {
 }
 // Animate progress bars on load
 document.addEventListener('DOMContentLoaded', () => {
+  if (localStorage.getItem('fintrack-theme') === 'light') {
+    document.body.classList.add('light-mode');
+  }
   document.querySelectorAll('.progress-fill[data-width]').forEach(el => {
     const w = el.dataset.width;
     el.style.width = '0%';
     setTimeout(() => el.style.width = w + '%', 100);
   });
 });
+function toggleTheme() {
+  document.body.classList.toggle('light-mode');
+  localStorage.setItem('fintrack-theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
+}
 </script>
 {% block scripts %}{% endblock %}
 </body>

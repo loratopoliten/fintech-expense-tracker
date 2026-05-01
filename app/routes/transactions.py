@@ -1,45 +1,29 @@
 """Transaction routes — CRUD + budgets + CSV export + date range filter."""
 
-import csv
-import io
 from fastapi import APIRouter, Request, Form, Depends, HTTPException, Query
-from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse, StreamingResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 from datetime import date, datetime
 from typing import Optional
 from app.database import db_cursor, USE_POSTGRES
+from app.schemas.finance import TransactionCreate
+from app.services.budget_service import BudgetService
+from app.services.goal_service import GoalService
+from app.services.recurring_service import RecurringService
+from app.services.report_service import ReportService
+from app.services.transaction_service import (
+    EXPENSE_CATEGORIES,
+    INCOME_CATEGORIES,
+    TransactionService,
+    clean_category as _clean_category,
+    parse_transaction_date as _parse_date,
+)
 from app.utils.auth import get_current_user
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
-EXPENSE_CATEGORIES = [
-    "Rent", "Food", "Transport", "WiFi", "UVK", "Utilities",
-    "Housing", "Healthcare", "Education",
-    "Entertainment", "Clothing", "Insurance",
-    "Savings", "Investment", "Debt Repayment", "Other",
-]
-INCOME_CATEGORIES = [
-    "Allowance", "Side Hustle", "Salary", "Freelance",
-    "Business", "Investment Returns", "Gift", "Other",
-]
-
 P = "%s" if USE_POSTGRES else "?"
-
-
-def _parse_date(value: str) -> str:
-    value = (value or "").strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(value, fmt).date().isoformat()
-        except ValueError:
-            pass
-    raise ValueError("date must be YYYY-MM-DD or DD/MM/YYYY")
-
-
-def _clean_category(value: str) -> str:
-    category = (value or "").strip()
-    return category or "Other"
 
 
 @router.get("", response_class=HTMLResponse)
@@ -50,35 +34,22 @@ async def transactions_page(
     date_to:   Optional[str] = Query(None),
     type_filter: Optional[str] = Query(None),
 ):
-    with db_cursor() as cur:
-        query  = f"SELECT * FROM transactions WHERE user_id={P}"
-        params = [user["sub"]]
+    txns = TransactionService.list_transactions(user["sub"], date_from, date_to, type_filter)
+    recurring = RecurringService.list_recurring(user["sub"])
 
-        if date_from:
-            query += f" AND date >= {P}"; params.append(date_from)
-        if date_to:
-            query += f" AND date <= {P}"; params.append(date_to)
-        if type_filter and type_filter in ("income", "expense"):
-            query += f" AND type = {P}"; params.append(type_filter)
-
-        query += " ORDER BY date DESC, created_at DESC LIMIT 500"
-        cur.execute(query, params)
-        txns = [dict(r) for r in cur.fetchall()]
-
-    # Totals for filtered set
-    filtered_income   = sum(float(r["amount"]) for r in txns if r["type"] == "income")
-    filtered_expenses = sum(float(r["amount"]) for r in txns if r["type"] == "expense")
+    totals = TransactionService.totals(txns)
 
     return templates.TemplateResponse("transactions/list.html", {
         "request": request, "user": user, "transactions": txns,
+        "recurring": recurring,
         "expense_categories": EXPENSE_CATEGORIES,
         "income_categories":  INCOME_CATEGORIES,
         "date_from":     date_from or "",
         "date_to":       date_to   or "",
         "type_filter":   type_filter or "",
-        "filtered_income":   round(filtered_income, 2),
-        "filtered_expenses": round(filtered_expenses, 2),
-        "filtered_balance":  round(filtered_income - filtered_expenses, 2),
+        "filtered_income":   totals["income"],
+        "filtered_expenses": totals["expenses"],
+        "filtered_balance":  totals["balance"],
     })
 
 
@@ -88,6 +59,7 @@ async def add_transaction(
     type: str = Form(...), amount: float = Form(...),
     category: str = Form(...), description: str = Form(""),
     date_val: str = Form(str(date.today())),
+    tags: str = Form(""),
 ):
     if type not in ("income", "expense"):
         raise HTTPException(400, "Invalid type")
@@ -97,19 +69,21 @@ async def add_transaction(
         date_val = _parse_date(date_val)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    category = _clean_category(category)
-
-    with db_cursor() as cur:
-        cur.execute(
-            f"INSERT INTO transactions (user_id, type, amount, category, description, date) VALUES ({P},{P},{P},{P},{P},{P})",
-            (user["sub"], type, amount, category, description, date_val))
+    payload = TransactionCreate(
+        type=type,
+        amount=amount,
+        category=_clean_category(category),
+        description=description,
+        date=date.fromisoformat(date_val),
+        tags=tags,
+    )
+    TransactionService.add_transaction(user["sub"], payload)
     return RedirectResponse("/transactions", status_code=303)
 
 
 @router.post("/delete/{txn_id}")
 async def delete_transaction(txn_id: int, user=Depends(get_current_user)):
-    with db_cursor() as cur:
-        cur.execute(f"DELETE FROM transactions WHERE id={P} AND user_id={P}", (txn_id, user["sub"]))
+    TransactionService.delete_transaction(user["sub"], txn_id)
     return RedirectResponse("/transactions", status_code=303)
 
 
@@ -122,29 +96,11 @@ async def export_csv(
     date_to:   Optional[str] = Query(None),
     type_filter: Optional[str] = Query(None),
 ):
-    with db_cursor() as cur:
-        query  = f"SELECT date, type, category, description, amount FROM transactions WHERE user_id={P}"
-        params = [user["sub"]]
-        if date_from:
-            query += f" AND date >= {P}"; params.append(date_from)
-        if date_to:
-            query += f" AND date <= {P}"; params.append(date_to)
-        if type_filter and type_filter in ("income", "expense"):
-            query += f" AND type = {P}"; params.append(type_filter)
-        query += " ORDER BY date DESC"
-        cur.execute(query, params)
-        rows = cur.fetchall()
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Date", "Type", "Category", "Description", "Amount (BWP)"])
-    for r in rows:
-        writer.writerow([r["date"], r["type"], r["category"], r["description"] or "", f"{float(r['amount']):.2f}"])
-
-    output.seek(0)
+    rows = TransactionService.list_transactions(user["sub"], date_from, date_to, type_filter, 0)
+    output = TransactionService.to_csv(rows)
     filename = f"fintrack-transactions-{date.today()}.csv"
     return StreamingResponse(
-        iter([output.getvalue()]),
+        iter([output]),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
@@ -187,23 +143,10 @@ async def set_budget(
     category: str = Form(...), limit_amt: float = Form(...),
     month: str = Form(str(date.today())[:7]),
 ):
-    category = _clean_category(category)
-    if limit_amt <= 0:
-        raise HTTPException(400, "Budget limit must be positive")
     try:
-        datetime.strptime(f"{month}-01", "%Y-%m-%d")
+        BudgetService.upsert_budget(user["sub"], category, limit_amt, month)
     except ValueError as exc:
-        raise HTTPException(400, "Month must be YYYY-MM") from exc
-
-    with db_cursor() as cur:
-        if USE_POSTGRES:
-            cur.execute(
-                f"INSERT INTO budgets (user_id,category,limit_amt,month) VALUES ({P},{P},{P},{P}) ON CONFLICT(user_id,category,month) DO UPDATE SET limit_amt=EXCLUDED.limit_amt",
-                (user["sub"], category, limit_amt, month))
-        else:
-            cur.execute(
-                f"INSERT INTO budgets (user_id,category,limit_amt,month) VALUES ({P},{P},{P},{P}) ON CONFLICT(user_id,category,month) DO UPDATE SET limit_amt=excluded.limit_amt",
-                (user["sub"], category, limit_amt, month))
+        raise HTTPException(400, str(exc)) from exc
     return RedirectResponse("/transactions/budgets", status_code=303)
 
 
@@ -211,9 +154,7 @@ async def set_budget(
 
 @router.get("/api/summary")
 async def api_summary(user=Depends(get_current_user)):
-    with db_cursor() as cur:
-        cur.execute(f"SELECT * FROM transactions WHERE user_id={P}", (user["sub"],))
-        rows = [dict(r) for r in cur.fetchall()]
+    rows = TransactionService.list_transactions(user["sub"], limit=0)
 
     income   = sum(r["amount"] for r in rows if r["type"] == "income")
     expenses = sum(r["amount"] for r in rows if r["type"] == "expense")
@@ -237,3 +178,103 @@ async def api_summary(user=Depends(get_current_user)):
                               for k, v in sorted(by_month.items())},
         "transaction_count": len(rows),
     })
+
+
+@router.get("/api/monthly-report")
+async def api_monthly_report(month: Optional[str] = Query(None), user=Depends(get_current_user)):
+    return JSONResponse(TransactionService.monthly_summary(user["sub"], month))
+
+
+@router.get("/reports/monthly.txt")
+async def monthly_report_text(month: Optional[str] = Query(None), user=Depends(get_current_user)):
+    return PlainTextResponse(ReportService.monthly_digest_text(user["sub"], month))
+
+
+@router.post("/recurring/add")
+async def add_recurring(
+    user=Depends(get_current_user),
+    type: str = Form(...),
+    amount: float = Form(...),
+    category: str = Form(...),
+    description: str = Form(""),
+    tags: str = Form(""),
+    next_date: str = Form(...),
+):
+    try:
+        RecurringService.add_recurring(user["sub"], type, amount, category, description, tags, next_date)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return RedirectResponse("/transactions", status_code=303)
+
+
+@router.post("/recurring/apply")
+async def apply_recurring(user=Depends(get_current_user)):
+    created = RecurringService.apply_due(user["sub"])
+    return RedirectResponse(f"/transactions?recurring_created={created}", status_code=303)
+
+
+@router.post("/recurring/delete/{recurring_id}")
+async def delete_recurring(recurring_id: int, user=Depends(get_current_user)):
+    RecurringService.delete_recurring(user["sub"], recurring_id)
+    return RedirectResponse("/transactions", status_code=303)
+
+
+@router.post("/split/add")
+async def add_split_transaction(
+    user=Depends(get_current_user),
+    type: str = Form(...),
+    date_val: str = Form(str(date.today())),
+    description: str = Form(""),
+    tags: str = Form(""),
+    category_1: str = Form(...),
+    amount_1: float = Form(...),
+    category_2: str = Form(...),
+    amount_2: float = Form(...),
+):
+    try:
+        TransactionService.add_split_transaction(
+            user["sub"], type, date_val, description, tags,
+            [(category_1, amount_1), (category_2, amount_2)],
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return RedirectResponse("/transactions", status_code=303)
+
+
+@router.get("/goals", response_class=HTMLResponse)
+async def goals_page(request: Request, user=Depends(get_current_user)):
+    return templates.TemplateResponse("transactions/goals.html", {
+        "request": request,
+        "user": user,
+        "goals": GoalService.list_goals(user["sub"]),
+    })
+
+
+@router.post("/goals/add")
+async def add_goal(
+    user=Depends(get_current_user),
+    name: str = Form(...),
+    target_amt: float = Form(...),
+    saved_amt: float = Form(0),
+    due_date: str = Form(""),
+):
+    try:
+        GoalService.add_goal(user["sub"], name, target_amt, saved_amt, due_date or None)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return RedirectResponse("/transactions/goals", status_code=303)
+
+
+@router.post("/goals/update/{goal_id}")
+async def update_goal(goal_id: int, user=Depends(get_current_user), saved_amt: float = Form(...)):
+    try:
+        GoalService.update_saved(user["sub"], goal_id, saved_amt)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return RedirectResponse("/transactions/goals", status_code=303)
+
+
+@router.post("/goals/delete/{goal_id}")
+async def delete_goal(goal_id: int, user=Depends(get_current_user)):
+    GoalService.delete_goal(user["sub"], goal_id)
+    return RedirectResponse("/transactions/goals", status_code=303)
