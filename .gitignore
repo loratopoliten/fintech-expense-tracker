@@ -9,3 +9,4 @@ db/
 venv/
 *.egg-info/
 dist/
+fintrack/

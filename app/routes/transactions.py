@@ -14,11 +14,15 @@ router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 EXPENSE_CATEGORIES = [
-    "Housing", "Food", "Transport", "Healthcare", "Education",
-    "Entertainment", "Clothing", "Utilities", "Insurance",
+    "Rent", "Food", "Transport", "WiFi", "UVK", "Utilities",
+    "Housing", "Healthcare", "Education",
+    "Entertainment", "Clothing", "Insurance",
     "Savings", "Investment", "Debt Repayment", "Other",
 ]
-INCOME_CATEGORIES = ["Salary", "Freelance", "Business", "Investment Returns", "Gift", "Other"]
+INCOME_CATEGORIES = [
+    "Allowance", "Side Hustle", "Salary", "Freelance",
+    "Business", "Investment Returns", "Gift", "Other",
+]
 
 P = "%s" if USE_POSTGRES else "?"
 
@@ -118,14 +122,6 @@ async def export_csv(
     date_to:   Optional[str] = Query(None),
     type_filter: Optional[str] = Query(None),
 ):
-    category = _clean_category(category)
-    if limit_amt <= 0:
-        raise HTTPException(400, "Budget limit must be positive")
-    try:
-        datetime.strptime(f"{month}-01", "%Y-%m-%d")
-    except ValueError as exc:
-        raise HTTPException(400, "Month must be YYYY-MM") from exc
-
     with db_cursor() as cur:
         query  = f"SELECT date, type, category, description, amount FROM transactions WHERE user_id={P}"
         params = [user["sub"]]
@@ -191,6 +187,14 @@ async def set_budget(
     category: str = Form(...), limit_amt: float = Form(...),
     month: str = Form(str(date.today())[:7]),
 ):
+    category = _clean_category(category)
+    if limit_amt <= 0:
+        raise HTTPException(400, "Budget limit must be positive")
+    try:
+        datetime.strptime(f"{month}-01", "%Y-%m-%d")
+    except ValueError as exc:
+        raise HTTPException(400, "Month must be YYYY-MM") from exc
+
     with db_cursor() as cur:
         if USE_POSTGRES:
             cur.execute(

@@ -7,7 +7,7 @@ Railway/Supabase sometimes returns postgres:// — both are handled.
 import sqlite3
 import os
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Optional, Sequence
 
 _raw_url = os.getenv("DATABASE_URL", "")
 
@@ -38,7 +38,7 @@ class DatabaseCursor:
     def __init__(self, cursor):
         self.cursor = cursor
 
-    def execute(self, query: str, params: tuple[Any, ...] | list[Any] | None = None):
+    def execute(self, query: str, params: Optional[Sequence[Any]] = None):
         if USE_POSTGRES:
             query = query.replace("?", "%s")
         if params is None:
